@@ -1,0 +1,8 @@
+name = Akismet
+description = Use the Akismet Service to protect your site from spam.
+
+; Information added by drupal.org packaging script on 2008-03-18
+version = "5.x-1.4"
+project = "akismet"
+datestamp = "1205883005"
+
