@@ -1,0 +1,298 @@
+/* $Id: style.css,v 1.1.2.15 2008/09/12 21:50:37 psynaptic Exp $ */
+
+/* Global */
+
+* {
+  margin: 0;
+  padding: 0;
+}
+
+body, textarea, select {
+  font: 100%/135% "Lucida Grande", "Bitstream Vera Sans", Arial, sans-serif;
+}
+
+#page {
+  font-size: 0.9em; /* 14.4px */
+}
+
+a {
+  text-decoration: none;
+}
+
+p {
+  margin-bottom: 1.5em;
+}
+
+table, th, td {
+  line-height: 1.35em;
+}
+
+table {
+  width: 100%;
+  margin-bottom: 1.5em;
+}
+
+th, td {
+  padding: 2px;
+}
+
+address {
+  font-style: normal;
+}
+
+blockquote {
+  margin: 1em 2em 1em 0;
+  padding-left: 3em;
+  font-style: italic;
+  background: url(images/quote.png) no-repeat;
+}
+
+code, pre {
+  font-family: Monaco, "Lucida Console", monospace;
+  white-space: pre;
+  overflow: auto;
+  margin-bottom: 1.5em;
+}
+
+#footer {
+  font-size: 0.9em;
+}
+
+/* Headings */
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: strong; /* changed from Normal to Strong - jhung */
+  font-family: Helvetica, Arial, sans-serif;
+  /* margin-bottom: 0.5em; - put margin on top instead. */
+  margin-top:0.5em;
+  line-height: 1.5;
+}
+
+h1 {
+  font-size: 1.5em;
+}
+
+h2 {
+  font-size: 1.3em;
+  line-height: 1.5;
+}
+
+.block h2 {
+  font-size: 1.2em;
+  margin-bottom: 0.2em;
+}
+
+h3 {
+  font-size: 1.1em;
+}
+
+h4 {
+  font-size: 1em;
+}
+
+h5 {
+  font-size: 1em;
+  font-weight: bold;
+}
+
+h6 {
+  font-size: 1em;
+  margin-bottom: 0;
+  font-weight: bold;
+}
+
+/* Blocks */
+
+.block .content {
+  margin-bottom: 1em;
+  font-size: 0.9em;
+}
+
+.block ul {
+  padding: 0;
+  margin-left: 10px;
+}
+
+.block ul li {
+  margin: 0;
+}
+
+.block ul li,
+.block .item-list ul li {
+  list-style: none;
+  list-style-image: none;
+}
+
+.block #user-login-form {
+  text-align: left;
+}
+
+.block #user-login-form ul {
+  margin-left: 0;
+}
+
+/* Tabs */
+
+ul.primary {
+  border: none;
+  padding: 0;
+  font-size: 0.9em;
+  margin: 0.5em 0 1em 0;
+}
+
+ul.primary li a,
+ul.primary li a:hover,
+ul.primary li.active a {
+  border: none;
+  padding: 2px 4px;
+}
+
+ul.secondary {
+  padding: 0;
+  margin: 0 0 1em 0;
+}
+
+ul.secondary li {
+  padding: 0;
+  margin-right: 1em;
+  border: none;
+}
+
+/* Boxes */
+
+.box .comment-content .content {
+  padding: 1em;
+}
+
+/* Messages */
+
+.messages {
+  padding: 1em;
+  margin-bottom: 1em;
+}
+
+.messages ul {
+  margin: 0;
+}
+
+.help {
+  padding: 1em;
+  margin: 1em 0;
+}
+
+/* Nodes */
+
+#centre .content {
+  padding-bottom: 1em;
+}
+
+.submitted {
+  font-size: 0.9em;
+}
+
+.node-links {
+  text-align: right;
+}
+
+/* Comments */
+
+#comments {
+  margin: 1em 0;
+}
+
+.comment {
+  margin-bottom: 3em;
+  padding-top: 3em;
+  border-top: 1px solid #DDD;
+}
+
+#centre .comment .content {
+  margin: 1em;
+  padding: 0;
+}
+
+.comment-links {
+  text-align: right;
+}
+
+/* Forms */
+
+input.form-text {
+  width: auto;
+}
+
+.form-text, textarea, .resizable-textarea,
+html.js .resizable-textarea textarea {
+  font-size: 1em;
+  overflow: visible;
+}
+
+.fieldset-wrapper .description {
+  margin: 0 0 1em 0;
+}
+
+/* Lists */
+
+ul, ol {
+  padding-left: 2.5em;
+  margin-bottom: 1.5em;
+}
+
+li {
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+ul.links li {
+  padding-left: 0;
+}
+
+li.leaf,
+li.expanded,
+li.collapsed,
+ul.menu li {
+  padding: 0;
+  margin: 0;
+}
+
+ul.menu li a {
+  display: block;
+}
+
+/* Drupal overrides */
+
+.breadcrumb {
+  font-size: 0.9em;
+}
+
+.meta {
+  margin-bottom: 1em;
+}
+
+fieldset {
+  border: 2px solid #DDD;
+}
+
+html.js fieldset.collapsible .fieldset-wrapper {
+  overflow: visible;
+}
+
+html.js fieldset.collapsed {
+  border: none;
+}
+
+/* Admin */
+
+div.admin .left,
+div.admin .right {
+  margin: 0;
+}
+
+div.admin-panel .body {
+  padding: 0;
+}
+
+/* Custom Tagadelic "more tags" top margin. Fluid-1299. */
+.block-tagadelic .content .more-link{
+margin-top: 10px;
+}

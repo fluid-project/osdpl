@@ -1,0 +1,292 @@
+/* Add your custom CSS here */
+
+#logo {
+margin-left:20px;
+}
+
+#osdpl-header-title {
+font-size:2.4em;
+display:block;
+}
+
+#osdpl-header-slogan {
+font-size:1.2em;
+font-style:italic;
+padding-left: 2em;
+}
+
+#osdpl-header-block {
+margin-top:3.4em;
+margin-left:2em;
+display:block;
+}
+
+#block-panels_mini-6 {
+height:100px;
+}
+
+.osdpl-front-page-content {
+border: 1px solid #aaa;
+padding: 2em;
+}
+
+#mini-panel-osdplHeader .panel-row-2 .inside{
+height:0px;
+}
+
+fieldset legend {
+font-weight:bold;
+font-size: 1.1em;
+font-style: italic;
+font-decoration: underline;
+padding: 0 0.3em 0 0.3em;
+
+}
+
+lh {
+font-size:1em;
+font-weight:bold;
+font-style:italic;
+}
+
+/* BEGIN Design pattern form styling */
+
+/* by default Fieldgroup tabs have a grey background. Change the colour to #fff instead. */
+#tabs-fieldgroup_tabs .fragment {
+background-color:#fff;
+}
+
+/* END Design pattern form styling */
+
+/* BEGIN Front Page Styling */
+
+/* BEGIN Welcome block and What is a Pattern block styling */
+
+#welcome-block {
+width: 62%;
+float:left;
+padding-right:10px;
+font-size:0.8em;
+}
+
+
+#welcome-block li {
+margin-top:10px;
+}
+#welcome-block ul {
+margin-bottom:10px;
+}
+
+#what-is-a-pattern-block {
+width: 29%;
+float:right;
+padding: 0px 15px 0 15px;
+border-left: 1px dotted #aaa;
+font-size:0.8em;
+}
+
+/* BEGIN Recently Updated Pattern block styling */
+#block-views-LatestModifiedPatternTeaser {
+clear:both;
+border-style:dotted;
+border-width:1px;
+padding: 5px;
+background-color:#e7efff;
+}
+
+.view-item-LatestModifiedPatternTeaser {
+margin-top:10px;
+}
+
+#block-views-LatestModifiedPatternTeaser .view-data-node-title {
+padding-top:1.2em;
+font-weight:bold;
+font-size:1.5em;
+clear:both;
+}
+
+#block-views-LatestModifiedPatternTeaser .view-label-node-changed{
+float:left;
+margin-right:5px;
+font-size:0.9em;
+}
+
+#block-views-LatestModifiedPatternTeaser .view-data-node-changed {
+font-size:0.9em;
+}
+
+#block-views-LatestModifiedPatternTeaser img {
+float:left;
+margin-right: 5px;
+padding: 5px;
+border: 5px;
+border-style: solid;
+border-color: #fff;
+background-color: #fff;
+}
+
+#block-views-LatestModifiedPatternTeaser .view-label-node-comment-statistics-comment-count {
+font-size: 0.9em;
+float:left;
+margin-left: 5px;
+}
+
+#block-views-LatestModifiedPatternTeaser .view-data-node-comment-statistics-comment-count {
+font-size: 0.9em;
+}
+
+#block-views-LatestModifiedPatternTeaser .view-data-votingapi-cache-vote-percent-average-value .fivestar-widget-static-5 {
+margin-left:15px;
+float:left;
+}
+
+.sidebar {
+border-style:none;
+border-width:1px;
+border-color:#aaa;
+margin-top:25px;
+padding: 10px 5px 10px 5px;
+}
+/* END Recently Updated Pattern block styling */
+
+/* START News Stories teaser block */
+
+#block-views-stories_teaser .content {
+padding-bottom: 0em;
+}
+/* END News Stories teaser block */
+
+
+/* END Front page styling */
+
+/* UI Design Pattern styling */
+div .content-section {
+border-style:solid;
+border-width: 1px;
+border-color: #ccc;
+margin-bottom: 10px;
+padding: 10px;
+}
+
+/* Styles for theming the main page View */
+.view-content-recent-news-list .content {
+/*font-size: 0.8em;*/
+}
+
+.view-content-recent-news-list .meta {
+/*font-size: 0.8em;*/
+}
+
+.view-content-recent-news-list h2 {
+font-size: 1em;
+}
+
+.view-content-recent-news-list .node-links {
+/*font-size: 0.8em;*/
+margin-bottom: 20px;
+}
+
+
+.view-item-LatestModifiedPatternThumbnails {
+border-bottom: 1px dotted #aaa;
+/* border-bottom-style:dotted;
+border-width:1px;
+border-color:#aaa;*/
+}
+
+.view-item-LatestModifiedPatternThumbnails .view-data-node-title {
+padding-top:0.6em;
+font-weight:bold;
+font-size:1.2em;
+clear:both;
+}
+
+.view-item-LatestModifiedPatternThumbnails .view-label-node-changed{
+float:left;
+margin-right:5px;
+/*font-size:0.8em;*/
+}
+
+.view-item-LatestModifiedPatternThumbnails .view-data-node-changed {
+/*font-size:0.8em;*/
+margin-bottom:1em;
+}
+
+.view-item-LatestModifiedPatternThumbnails img {
+margin-right: 5px;
+}
+
+.view-item-LatestModifiedPatternThumbnails .view-label-node-comment-statistics-comment-count {
+/*font-size: 0.8em;*/
+float:left;
+margin-left: 5px;
+}
+
+.view-item-LatestModifiedPatternThumbnails .view-data-node-comment-statistics-comment-count {
+/*font-size: 0.9em;*/
+}
+
+.view-item-LatestModifiedPatternThumbnails .view-data-votingapi-cache-vote-percent-average-value .fivestar-widget-static-5 {
+margin-left:15px;
+float:left;
+}
+
+.view-content-LatestModifiedPatternThumbnails .item-list ul li {
+list-style: none;
+list-style-image: none;
+}
+
+/* Front Page V3 Styles */
+#centre .content {
+padding-bottom: 0em;
+}
+
+.panel-pane {
+font-size: 0.9em;
+}
+
+.view-data-node_title {
+font-weight: bold;
+}
+
+.view-label {
+float: left;
+margin-right: 0.3em;
+font-weight: bold;
+}
+
+.view-grid-item {
+width:33%;
+}
+
+.view-grid tr {
+vertical-align: bottom;
+}
+
+.view-data-node_data_field_solution_image_field_solution_image_fid .field-item img {
+margin: 5px 0 5px 0;
+padding: 6px;
+border-right: 3px solid #aaa;
+border-bottom: 3px solid #aaa;
+border-left: 1px dotted #aaa;
+border-top: 1px dotted #aaa;
+}
+
+#mini-panel-osdplActivityMiniPanel {
+margin: 2em;
+}
+
+.view-label-node_changed {
+float:none;
+}
+
+.osdplActionThumbnail {
+margin-left: 2em;
+}
+.view-data-comments-subject {
+margin-bottom: -0.5em;
+}
+
+.view-data-comments-timestamp {
+margin-bottom: 0.7em;
+}

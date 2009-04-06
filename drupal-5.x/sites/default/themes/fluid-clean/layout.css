@@ -1,0 +1,74 @@
+/* Layout */
+
+#page {
+  width: 1100px; /*custom width. was 910px. -jhung */
+  margin: 0 auto;
+}
+/* replaced by osdplHeader. See custom.css.
+#logo {
+  background: transparent url(logo.png) no-repeat;  
+  display: block;
+}
+
+#site-name {
+  display: block;
+  font-size: 2em;
+  padding: 45px 0 20px 120px; 
+  height: 80px;
+
+}
+*/
+
+/* replaced by osdplHeader. see custom.css.
+#header {
+  padding: 1em 0;
+  height: 70px;
+}
+
+#header-right {
+  float: right;
+}
+*/
+
+.left,
+.right {
+  float: left;
+  width: 190px;
+}
+
+.left {
+  margin-right: 10px;
+  clear: left;
+}
+
+#centre {
+  float: left;
+  margin-bottom: 1em;
+  width: 1100px; /* custom width. Was 910px. -jhung */
+}
+
+.right {
+  margin-left: 10px;
+}
+
+.layout-both #centre,
+.layout-right #centre {
+  padding-right: 10px;
+}
+
+.layout-both #centre {
+  width: 650px; /* Custom width. Was 500px. -jhung */
+}
+
+.layout-left #centre {
+  width: 710px;
+  padding-right: 0;
+}
+
+.layout-right #centre {
+  width: 700px;
+}
+
+#footer {
+  clear: both;
+}

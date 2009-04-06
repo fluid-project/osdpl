@@ -1,0 +1,13 @@
+/* $Id: ie6.css,v 1.1.2.3 2008/09/12 21:50:37 psynaptic Exp $ */
+
+ul.menu li a { /* fixes display: block; issue */
+  display: inline;
+}
+
+.layout-right #centre {
+  width: 690px;
+}
+
+.right {
+  margin-left: 8px;
+}

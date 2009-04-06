@@ -1,0 +1,61 @@
+/* $Id: fancy-dates.css,v 1.1.2.2 2008/09/12 21:50:37 psynaptic Exp $ */
+
+/* Blog dates */
+
+.blog .date {
+  font-size: 0.8em;
+  color: #777;
+  width: 3em;
+  text-align: center;
+  float: right;
+  margin: 0 0 0.5em 1em;
+}
+
+.blog .day,
+.blog .month,
+.blog .year {
+  display: block;
+}
+
+.blog .day,
+.blog .month {
+  background-color: #BCD1FF;
+}
+
+.blog .day {
+  font-size: 1.5em;
+}
+
+.blog .month {
+  font-size: 1.2em;
+}
+
+.blog .year {
+  color: #fff;
+  background-color: #369;
+}
+
+/* Comment dates */
+
+.comment .date {
+  font-size: 0.9em;
+  color: #777;
+  width: 4em;
+  text-align: center;
+  float: right;
+}
+
+.comment .day,
+.comment .time {
+  display: block;
+}
+
+.comment .day {
+  color: #fff;
+  background-color: #369;
+  font-weight: bold;
+}
+
+.comment .time {
+  background-color: #BCD1FF;
+}
