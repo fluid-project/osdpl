@@ -1,0 +1,168 @@
+<?php
+/**
+ * @author Ryan Hughes <ryan@linuxbox.com>
+ */
+
+// $Id: textfield_autocomplete.module,v 1.1 2007/08/31 16:18:43 linuxbox Exp $
+
+/**
+ * Implementation of hook_menu.
+ */
+function textfield_autocomplete_menu($may_cache) {
+  if ($may_cache) {
+    $items[] = array(
+      'path' => 'textfield_autocomplete',
+      'title' => t('Textfield Autocomplete'),
+      'callback' => 'textfield_autocomplete',
+      'type' => MENU_CALLBACK,
+      'access' => true,
+    );
+  } // if may cache
+
+  return $items;
+} // function nonsense_menu
+
+/**
+ * Implementation of hook_widget_info().
+ */
+function textfield_autocomplete_widget_info() {
+  return array(
+    'autocomplete' => array(
+      'label' => 'Text Field With Autocomplete',
+      'field types' => array('text'),
+    ),
+  );
+}
+
+/**
+ * Implementation of hook_widget().
+ */
+function textfield_autocomplete_widget($op, &$node, $field, &$items) {
+  switch ($op) {
+    case 'form':
+      $form = array();
+
+      $form[$field['field_name']] = array('#tree' => TRUE);
+
+      if ($field['multiple']) {
+        $form[$field['field_name']]['#type'] = 'fieldset';
+        $form[$field['field_name']]['#description'] = t($field['widget']['description']);
+        $delta = 0;
+        foreach ($items as $data) {
+          if ($data['value']) {
+            $form[$field['field_name']][$delta]['value'] = array(
+              '#type' => 'textfield',
+              '#title' => ($delta == 0) ? t($field['widget']['label']) : '',
+              '#default_value' => $data['value'],
+              '#required' => ($delta == 0) ? $field['required'] : FALSE,
+              '#maxlength' => $field['max_length'] ? $field['max_length'] : NULL,
+              '#weight' => $field['widget']['weight'],
+              '#autocomplete_path' => 
+                  'textfield_autocomplete/'.$field['field_name'],
+            );
+            if ($field['text_processing']) {
+              $form[$field['field_name']][$delta]['format'] = filter_form($data['format'], $form[$field['field_name']][$delta]['value']['#weight'] + 1, array($field['field_name'], $delta, 'format'));
+            }
+            $delta++;
+          } // if this is an item with a value
+        } // foreach item
+        foreach (range($delta, $delta + 2) as $delta) {
+          $form[$field['field_name']][$delta]['value'] = array(
+            '#type' => 'textfield',
+            '#title' => ($delta == 0) ? t($field['widget']['label']) : '',
+            '#default_value' => '',
+            '#required' => ($delta == 0) ? $field['required'] : FALSE,
+            '#maxlength' => $field['max_length'] ? $field['max_length'] : NULL,
+            '#weight' => $field['widget']['weight'],
+            '#autocomplete_path' => 
+                  'textfield_autocomplete/'.$field['field_name'],
+          );
+          if ($field['text_processing']) {
+            $form[$field['field_name']][$delta]['format'] = filter_form($items[$delta]['format'], $form[$field['field_name']][$delta]['value']['#weight'] + 1, array($field['field_name'], $delta, 'format'));
+          }
+        } // foreach item in the range of (end - end+2)
+      } // if it's multiple
+      else {
+        $form[$field['field_name']][0]['value'] = array(
+          '#type' => 'textfield',
+          '#title' => t($field['widget']['label']),
+          '#default_value' => isset($items[0]['value']) ? $items[0]['value'] : '',
+          '#required' => $field['required'],
+          '#description' => t($field['widget']['description']),
+          '#maxlength' => $field['max_length'] ? $field['max_length'] : NULL,
+          '#weight' => $field['widget']['weight'],
+          '#autocomplete_path' => 
+                'textfield_autocomplete/'.$field['field_name'],
+        );
+        if ($field['text_processing']) {
+          $form[$field['field_name']][0]['format'] = filter_form($items[0]['format'], $form[$field['field_name']][0]['value']['#weight'] + 1, array($field['field_name'], 0, 'format'));
+        }
+      } // else it's not multiple
+      return $form;
+
+    case 'process form values':
+      // Don't save empty fields except the first value
+      foreach ($items as $delta => $item) {
+        if ($item['value'] == '' && $delta > 0) {
+          unset($items[$delta]);
+        }
+      }
+      break;
+  } // switch op
+} // function textfield_autocomplete_widget
+
+
+/**
+ * Callback to return the values for autocomplete.
+ */
+function textfield_autocomplete($fieldname, $startswith) {
+  /*
+  $items = func_get_args();
+  $items = array_combine($items, $items);
+  echo drupal_to_js($items);
+  die();
+  */
+
+  $field = content_fields($fieldname);
+  $db_info = content_database_info($field);
+  $getdatafrom[$db_info['table']][$db_info['columns']['value']['column']] = true;
+
+  $items = array();
+  foreach ($getdatafrom as $table => $columns) {
+    $cols = array_keys($columns);
+
+    // I do this self-join business because I want the latest version ID.
+    // So I join with itself, saying I want all the pairs of 
+    // (a row, a row with a greater version id).
+    // Then I cut it down, saying I only want ones where the one with the
+    // greater version id is null.
+    // Taken together, it's like saying "Give me all the ones such that there
+    // is no row with a greater version id."
+    // Doing it this way means that I don't have to do a subselect, which can
+    // be slow.
+    $likes = array();
+    $likes_vals = array();
+    foreach ($cols as $col) {
+      $likes[] = "A.".$col." LIKE '%s%%'";
+      $likes_vals[] = $startswith;
+    } // foreach likes
+
+    $query =
+      "SELECT DISTINCT A.".implode(', A.', $cols)." 
+       FROM {".$table."} A 
+        LEFT JOIN {".$table."} B ON (A.nid=B.nid AND B.vid > A.vid)
+       WHERE B.vid IS NULL
+         AND ".implode(" AND ", $likes);
+    $result = db_query($query, $likes_vals);
+
+    while ($row = db_fetch_array($result)) {
+      foreach ($row as $colname => $colval) {
+        $items[] = $colval;
+      } // foreach col value
+    } // while there's rows
+  } // foreach table
+
+  if ($items) { $items = array_combine($items, $items); } 
+  echo drupal_to_js($items);
+  die();
+} // function nonsense_autocomplete

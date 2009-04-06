@@ -1,0 +1,47 @@
+<?php
+/**
+ * $Id: cck_taxonomy_ssu.install,v 1.1.2.4 2008/02/27 09:06:41 rconstantine Exp $
+ * @package CCK_Taxonomy_SSU
+ * @category NeighborForge
+ */
+ 
+/**
+ * Don't know if I need this or not
+ */
+function cck_taxonomy_ssu_install() {
+  
+}
+
+/**
+ * This is for modifying existing installs' cck-managed tables since cck can't seem to
+ * update tables from changes within the hook_field_settings()::database_columns.
+ */
+function cck_taxonomy_ssu_update_1() {
+  $ret = array();
+  include_once('./'. drupal_get_path('module', 'content') .'/content.module');
+  include_once('./'. drupal_get_path('module', 'content') .'/content_admin.inc');
+
+  content_clear_type_cache();
+  $fields = content_fields();
+  
+  foreach ($fields as $field) {
+    switch ($field['type']) {
+      case 'cck_taxonomy_ssu':
+        $db_info = content_database_info($field);
+        $column = $db_info['table']. '_choice';
+        $pos = strpos($column, '_');
+        $column = substr($column, $pos+1);
+        $length = 40;
+        $type = 'varchar(' .$length. ')';
+        $not_null = FALSE;
+        $sortable = TRUE;
+        content_db_add_column($db_info['table'], $column, $type, array($not_null, $sortable));
+        $ret[] = array(
+          'query' => strtr('The field %field_name has been updated in several respects.', array('%field_name' => $field['field_name'])),
+          'success' => TRUE
+        );
+        break;
+      }
+    }
+  return $ret;
+}

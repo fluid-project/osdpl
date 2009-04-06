@@ -1,0 +1,62 @@
+<?php
+// $Id: taxonomy_fields.install,v 1.6dev 2008/03/12 boneless Exp $
+
+/**
+ * Implementation of hook_install().
+ */
+function taxonomy_fields_install() {
+  switch ($GLOBALS['db_type']) {
+    case 'mysql':
+    case 'mysqli':
+      db_query("CREATE TABLE {taxonomy_fields} (
+          field_name varchar(32) NOT NULL default '',
+          tid integer NOT NULL default '0',
+          field_value longtext NOT NULL default '',
+          delta integer NOT NULL default '0',
+          universal integer NOT NULL default '0',
+          PRIMARY KEY (field_name,tid,delta)
+        ) /*!40100 DEFAULT CHARACTER SET utf8 */;");
+      
+      db_query("CREATE TABLE {taxonomy_fields_ancestors} (
+          tid integer NOT NULL default '0',
+          ancestors integer NOT NULL default '0',
+          PRIMARY KEY (tid)
+        ) /*!40100 DEFAULT CHARACTER SET utf8 */;");
+    break;
+
+    case 'pgsql':
+      db_query("CREATE TABLE {taxonomy_fields} (
+          field_name varchar(32) NOT NULL default '',
+          tid integer NOT NULL default '0',
+          field_value longtext NOT NULL default '',
+          delta integer NOT NULL default '0',
+          universal integer NOT NULL default '0',
+          PRIMARY KEY (field_name,tid,delta)
+        )");
+       db_query("CREATE TABLE {taxonomy_fields_ancestors} (
+          tid integer NOT NULL default '0',
+          ancestors integer NOT NULL default '0',
+          PRIMARY KEY (tid)
+        )");
+    break;
+  }
+  db_query("UPDATE {system} SET weight = 10 WHERE name = 'taxonomy_fields'");
+}
+
+/**
+* Implementation of hook_uninstall().
+*/
+function taxonomy_fields_uninstall() {
+  db_query('DROP TABLE {taxonomy_fields}');
+  db_query('DROP TABLE {taxonomy_fields_ancestors}');
+}
+
+/*
+ * Increases module weight, so it is executed after fieldgroup
+ */
+function taxonomy_fields_update_1() {
+  $ret = array();
+  $ret[] = update_sql("UPDATE {system} SET weight = 10 WHERE name = 'taxonomy_fields'");
+  return $ret;
+}
+?>

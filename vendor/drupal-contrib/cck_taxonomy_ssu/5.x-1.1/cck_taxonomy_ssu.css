@@ -1,0 +1,51 @@
+@CHARSET "UTF-8";
+<!-- cut and paste these into your theme's style.css or other css file; copy the images to an "images" folder inside your theme-->
+fieldset.group-categories {
+  padding-top: 50px;
+  padding-left: 10px;
+}
+
+html.js .cck-tssu .collapsible legend a {
+  background: transparent url(images/minus.png) no-repeat 0 0;
+}
+
+html.js .cck-tssu .collapsed legend a {
+  background: transparent url(images/plus.png) no-repeat 0 0;
+}
+
+fieldset.cck-tssu {
+  border: none;
+  padding-top: 0;
+}
+
+fieldset.cck-tssu fieldset {
+  padding: 0 0 0 0px;
+}
+
+fieldset.cck-tssu fieldset legend {
+  font-weight: normal;
+}
+
+fieldset.cck-tssu fieldset fieldset {
+  padding-left: 0;
+}
+
+fieldset.cck-tssu .fieldset-wrapper {
+  padding-top: 0;
+}
+
+fieldset.cck-tssu .fieldset-wrapper .fieldset-wrapper {
+  padding: 0 0 6px 26px;
+}
+
+fieldset.cck-tssu .description {
+  margin: 0 0 0 0px;
+  color:#e7a614;
+  font-size: 90%;
+}
+
+fieldset.cck-tssu .form-item {
+  margin: 0 0 4px 4px;
+  border: none;
+  font-size: 90%;
+}

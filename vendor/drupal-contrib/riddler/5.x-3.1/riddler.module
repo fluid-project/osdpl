@@ -1,0 +1,123 @@
+<?php
+// $Id
+
+/**
+ * When enabled this module will add a required field to forms of your choice
+ * asking a simple question to avoid automatic content creation by
+ * f.e. spambots. The question and answers are custimizable.
+
+ * Thanks to: nkoponen
+
+ */
+
+ 
+/* Implementation of hook_help */
+
+function riddler_help($section = 'admin/help#riddler') {
+  switch ($section) {
+      case 'admin/modules#description':
+            return t('Requires anonymous users to answer a simple question to be answered forms are processed. A primitive but effective way to counter spam.');
+      break;
+  }
+}
+
+/* Implementation of hook_perm */
+
+function riddler_perm () {
+	return array(
+		'administer riddler',
+	);
+}
+
+/* Implementation of hook_menu */
+
+function riddler_menu($may_cache) {
+	$items = array();
+	if ($may_cache) {
+		$access = user_access('administer riddler');
+		$items[] = array(
+	   	'path' => 'admin/user/captcha/riddler',
+     		'title' => t('Riddler'),
+     		'description' => t('Allows you to force a question to a number of forms to counter f.e. spammers.'),
+     		'callback' => 'drupal_get_form',
+     		'callback arguments' => array('riddler_settings'),
+     		'access' => $access,
+     		'type' => MENU_LOCAL_TASK
+   	);
+   }
+  	return $items;
+}
+
+/* Riddler settings form, called by drupal_get_form in menu */
+
+function riddler_settings() {
+	$form['riddler_question'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Question'),
+		'#description' => t('A question that you require anonymous users to answer'),
+		'#default_value' => variable_get("riddler_question", "Do you hate spam? (yes or no)"),
+		'#required' => TRUE,
+	); 
+	$form['riddler_answer'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Answer'),
+		'#default_value' => variable_get("riddler_answer", "yes"),
+		'#description' => t('Answer to the above question. Answers are not case sensitive'),
+		'#required' => TRUE,
+	); 
+	$form['riddler_weight'] = array(
+		'#type' => 'select',
+		'#title' => t('Weight'),
+		'#default_value' => variable_get("riddler_weight", 0),
+		'#options' => drupal_map_assoc(range(-10,10)),
+		'#description' => t('Weight of the Riddler form element'),
+		'#required' => TRUE,
+	);
+	
+	return system_settings_form($form);
+}
+
+/* Processing the settings form */
+/*
+function riddler_settings_submit ($form_id, $form_values) {
+	variable_set("riddler_question", $form_values['question']);
+	variable_set("riddler_answer", $form_values['answer']);
+}
+*/
+
+/* Captcha implementation of Riddler */
+
+function riddler_captcha($op, $captcha_type='', $answer='') {
+ 	switch ($op) {
+ 		case 'list' :
+ 			return array("Riddler");
+ 		break;
+ 		case 'generate' :
+ 			$result = array();
+ 			if ($captcha_type == "Riddler") {
+ 				$result = riddler_form();
+ 			}
+ 			return $result;
+ 		break;
+		// Answers changed to lowercase for case insensitivity
+		case 'preprocess' :
+			$answer_lo = strtolower($answer);
+			return $answer_lo;
+		break;
+ 			
+ 	} 
+}
+
+function riddler_form () {
+	$form['preprocess'] = TRUE;
+	$form['solution'] = (string)(strtolower(variable_get("riddler_answer", "yes")));
+	$form['form']['captcha_response'] = array(
+		'#type' => 'textfield',
+      '#title' => variable_get("riddler_question", "Do you hate spam? (yes or no)"),
+      '#required' => TRUE,
+      '#description' => t('Security question, designed to stop automated spam bots'),
+   	'#weight' => variable_get('riddler_weight', 0),
+   	
+   );	
+   return $form;
+}

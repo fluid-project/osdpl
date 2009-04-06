@@ -1,0 +1,40 @@
+<?php
+function oaliquid_install() {
+	switch ($GLOBALS['db_type']) {
+    case 'mysql':
+    case 'mysqli':
+      db_query("CREATE TABLE {oaliquid} (
+                  vid int(10) unsigned NOT NULL default '0',
+                  type varchar(128),
+                  layout varchar(128),
+                  preset varchar(128),
+                  options longtext,
+                  PRIMARY KEY (vid, type)
+                ) /*!40100 DEFAULT CHARACTER SET UTF8 */"
+      );
+      db_query("CREATE TABLE {oaliquid_preset} (
+      			  name varchar(128),
+      			  layout varchar(128),
+      			  options longtext,
+      			  PRIMARY KEY (name, layout)
+      			) /*!40100 DEFAULT CHARACTER SET UTF8 */"
+      );
+      break;
+    case 'pgsql':
+      //TODO
+      break;
+  }
+}
+
+function oaliquid_uninstall() {
+	switch ($GLOBALS['db_type']) {
+    case 'mysql':
+    case 'mysqli':
+	  db_query('DROP TABLE IF EXISTS {oaliquid}');
+	  db_query('DROP TABLE IF EXISTS {oaliquid_preset}');
+      break;
+    case 'pgsql':
+      //TODO
+      break;
+  }
+}

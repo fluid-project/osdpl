@@ -1,0 +1,12 @@
+; $Id: comment_subscribe.info,v 1.1.2.4 2008/12/22 11:45:05 zyxware Exp $
+name = Comment Subscribe
+description = "Allow both registered and anonymous users to subscribe to replies to specific comments or to comments to nodes."
+version = VERSION
+package = Other
+dependencies = comment
+
+; Information added by drupal.org packaging script on 2008-12-24
+version = "5.x-1.3"
+project = "comment_subscribe"
+datestamp = "1230120611"
+

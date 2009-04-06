@@ -1,0 +1,71 @@
+# $Id: ja.po,v 1.1.2.2 2007/05/13 17:45:51 imagine Exp $
+# -----------------------------------------------------------------------------
+# Japanese translation of Drupal (riddler.module)
+#
+# Copyright (c) 2006-2007  Drupal Japan  ( http://drupal.jp/ )  /
+#                          Drupal Nippon ( http://drupon.org/ ) /
+#                          Takafumi      ( jp.drupal@imagine **reverse order**)
+#
+# Generated from file:
+#  No version information was available in the source files.
+#
+# -----------------------------------------------------------------------------
+msgid ""
+msgstr ""
+"POT-Creation-Date: 2007-05-14 02:06+0900\n"
+"Last-Translator: Takafumi <jp.drupal@imagine **reverse order**>\n"
+"Language-Team: Drupal Japan / Drupal Nippon\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n!=1);\n"
+
+#: riddler.module:16
+msgid "Requires anonymous users to answer a simple question to be answered forms are processed. A primitive but effective way to counter spam."
+msgstr "フォーム投稿の際、ユーザが簡単な質問に答えることを要求します。 これは、スパムに対抗する、原始的ながら効果的な方法です。"
+
+#: riddler.module:37
+msgid "Riddler"
+msgstr "リドラー"
+
+#: riddler.module:38
+msgid "Allows you to force a question to a number of forms to counter f.e. spammers."
+msgstr "スパマーなどに対抗するために、多数のフォームで質問に返答することを強いるようにします。"
+
+# ----------
+#: riddler.module:52
+msgid "Question"
+msgstr "質問"
+
+#: riddler.module:53
+msgid "A question that you require anonymous users to answer"
+msgstr "ユーザに回答を要求する質問を入力してください。"
+
+#: riddler.module:59
+msgid "Answer"
+msgstr "回答"
+
+#: riddler.module:61
+msgid "Answer to the above question. Answers are not case sensitive"
+msgstr "上記の質問に対する回答を入力してください。 回答は大文字・小文字を区別しません。"
+
+#: riddler.module:102
+msgid "Security question, designed to stop automated spam bots"
+msgstr "自動スパムボットではないことを確認するために、質問に対する回答を入力してください。"
+
+#: riddler.module:0 riddler.info:0
+msgid "riddler"
+msgstr "riddler"
+
+#: riddler.info:0
+msgid "Captcha Riddler"
+msgstr "キャプチャリドラー"
+
+#: riddler.info:0
+msgid "Allows site administrators to add a simple question to form validation"
+msgstr "フォーム投稿時の確認のために、簡単な質問を追加できるようにします。"
+
+#: riddler.info:0
+msgid "SPAM Control"
+msgstr "スパムコントロール"
+

@@ -1,0 +1,15 @@
+; $Id: cck_taxonomy_ssu.info,v 1.1.2.4 2007/10/26 20:06:55 rconstantine Exp $
+;/**
+; * @package CCK_Taxonomy_SSU
+; * @category NeighborForge
+; */
+name = CCK Taxonomy Super Select Ultra
+description = Use taxonomy as a cck field where each term is a checkbox inside a collapsible fieldset - plus more.
+dependencies = content taxonomy
+package = CCK
+project = "cck_taxonomy_ssu"
+; Information added by drupal.org packaging script on 2008-02-27
+version = "5.x-1.1"
+project = "cck_taxonomy_ssu"
+datestamp = "1204103703"
+

@@ -1,0 +1,10 @@
+name = Panels taxonomy
+description = Flexible navigation for taxonomy.
+dependencies = taxonomy panels
+package = Panels
+
+; Information added by drupal.org packaging script on 2007-08-13
+version = "5.x-0.5"
+project = "panels_taxonomy"
+datestamp = "1187046007"
+

@@ -1,0 +1,205 @@
+<?php
+// $Id: content_access_acl.test,v 1.1.2.1 2008/10/28 12:54:01 fago Exp $
+
+/**
+ * @file
+ * Automatd SimpleTest Case for using content access module with acl module
+ */
+ 
+require_once(drupal_get_path('module', 'content_access') .'/tests/content_access_test_help.php');
+
+class ContentAccessACLTestCase extends ContentAccessTestCase {
+  
+  var $node;
+  
+  /**
+   * Implementation of get_info() for information
+   */
+  function get_info() {
+    return array(
+      'name' => t('Content Access Module with ACL Module Tests'),
+      'desc' => t('Various tests to check the combination of content access and ACL module.'),
+      'group' => 'Content Access',
+    );
+  }
+  
+  /**
+   * Setup configuration before each test
+   */
+  function setUp() {
+    
+    parent::setUp();
+    
+    // Create test nodes
+    $this->node = $this->createNode();
+  }
+  
+  /**
+   * Test Viewing accessibility with permissions for single users
+   */
+  function testViewAccess() {
+    
+    // Enable ACL module
+    // Exit test if module could not be enabled
+    if (!$this->aclModuleEnable()) {
+      $this->pass('No ACL module present, skipping test');
+      return;
+    }
+        
+    // Restrict access to this content type (access is only allowed for the author)
+    // Enable per node access control
+    $access_permissions = array(
+      'view[author]' => TRUE,
+      'view[1]' => FALSE,
+      'view[2]' => FALSE,
+      'per_node' => TRUE,
+    );
+    $this->changeAccessContentType($access_permissions);
+    
+    // Allow access for test user
+    $edit = array(
+      'acl[view][add]' => $this->test_user->name,
+    );
+    $this->drupalPostRequest('node/'. $this->node->nid .'/access', $edit, 'Add User');
+    $this->postToCurrentPage(array(), 'Submit');
+    
+    // Logout admin, try to access the node anonymously
+    $this->drupalGet(url('logout'));
+    $this->drupalGet(url('node/'. $this->node->nid));
+    $this->assertText(t('Access denied'), 'node is not viewable');
+    
+    // Login test user, view access should be allowed now
+    $this->drupalLoginUser($this->test_user);
+    $this->drupalGet(url('node/'. $this->node->nid));
+    $this->assertNoText(t('Access denied'), 'node is viewable');
+    
+    // Login admin and disable per node access
+    $this->drupalGet(url('logout'));
+    $this->drupalLoginUser($this->admin_user);
+    $this->changeAccessPerNode(FALSE);
+    
+    // Logout admin, try to access the node anonymously
+    $this->drupalGet(url('logout'));
+    $this->drupalGet(url('node/'. $this->node->nid));
+    $this->assertText(t('Access denied'), 'node is not viewable');
+    
+    // Login test user, view access should be denied now
+    $this->drupalLoginUser($this->test_user);
+    $this->drupalGet(url('node/'. $this->node->nid));
+    $this->assertText(t('Access denied'), 'node is not viewable');
+  }
+  
+  /**
+   * Test Editing accessibility with permissions for single users
+   */
+  function testEditAccess() {
+        
+    // Enable ACL module
+    // Exit test if module could not be enabled
+    if (!$this->aclModuleEnable()) {
+      $this->pass('No ACL module present, skipping test');
+      return;
+    }
+    
+    // Enable per node access control
+    $this->changeAccessPerNode();
+    
+    // Allow edit access for test user
+    $edit = array(
+      'acl[update][add]' => $this->test_user->name,
+    );
+    $this->drupalPostRequest('node/'. $this->node->nid .'/access', $edit, 'acl[update][add_button]');
+    $this->postToCurrentPage(array(), 'Submit');
+    
+    // Logout admin, try to edit the node anonymously
+    $this->drupalGet(url('logout'));
+    $this->drupalGet(url('node/'. $this->node->nid .'/edit'));
+    $this->assertText(t('Access denied'), 'node is not editable');
+    
+    // Login test user, edit access should be allowed now
+    $this->drupalLoginUser($this->test_user);
+    $this->drupalGet(url('node/'. $this->node->nid .'/edit'));
+    $this->assertNoText(t('Access denied'), 'node is editable');
+    
+    // Login admin and disable per node access
+    $this->drupalGet(url('logout'));
+    $this->drupalLoginUser($this->admin_user);
+    $this->changeAccessPerNode(FALSE);
+    
+    // Logout admin, try to edit the node anonymously
+    $this->drupalGet(url('logout'));
+    $this->drupalGet(url('node/'. $this->node->nid .'/edit'));
+    $this->assertText(t('Access denied'), 'node is not editable');
+    
+    // Login test user, edit access should be denied now
+    $this->drupalLoginUser($this->test_user);
+    $this->drupalGet(url('node/'. $this->node->nid .'/edit'));
+    $this->assertText(t('Access denied'), 'node is not editable');
+  }
+  
+  /**
+   * Test Deleting accessibility with permissions for single users
+   */
+  function testDeleteAccess() {
+    
+    // Enable ACL module
+    // Exit test if module could not be enabled
+    if (!$this->aclModuleEnable()) {
+      $this->pass('No ACL module present, skipping test');
+      return;
+    }
+    
+    // Enable per node access control
+    $this->changeAccessPerNode();
+    
+    // Allow delete access for test user
+    $edit = array(
+      'acl[delete][add]' => $this->test_user->name,
+    );
+    $this->drupalPostRequest('node/'. $this->node->nid .'/access', $edit, 'acl[delete][add_button]');
+    $this->postToCurrentPage(array(), 'Submit');
+    
+    // Logout admin, try to delete the node anonymously
+    $this->drupalGet(url('logout'));
+    $this->drupalGet(url('node/'. $this->node->nid .'/delete'));
+    $this->assertText(t('Access denied'), 'node is not deletable');
+    
+    // Login test user, delete access should be allowed now
+    $this->drupalLoginUser($this->test_user);
+    $this->drupalGet(url('node/'. $this->node->nid .'/delete'));
+    $this->assertNoText(t('Access denied'), 'node is deletable');
+    
+    // Login admin and disable per node access
+    $this->drupalGet(url('logout'));
+    $this->drupalLoginUser($this->admin_user);
+    $this->changeAccessPerNode(FALSE);
+    
+    // Logout admin, try to delete the node anonymously
+    $this->drupalGet(url('logout'));
+    $this->drupalGet(url('node/'. $this->node->nid .'/delete'));
+    $this->assertText(t('Access denied'), 'node is not deletable');
+    
+    // Login test user, delete access should be denied now
+    $this->drupalLoginUser($this->test_user);
+    $this->drupalGet(url('node/'. $this->node->nid .'/delete'));
+    $this->assertText(t('Access denied'), 'node is not deletable');
+  }
+  
+  /**
+   * Enables the ACL module and returns TRUE on success
+   */
+  function aclModuleEnable() {
+    
+    if (module_exists('acl')) {
+      return TRUE;
+    }
+    module_enable(array('acl'));
+    if (module_exists('acl')) {
+      module_disable(array('acl'));
+      // Make sure we use drupalModuleEnable(), so the module is disabled again afterwards.
+      $this->drupalModuleEnable('acl');
+      return TRUE;
+    }
+    return FALSE;
+  }
+}

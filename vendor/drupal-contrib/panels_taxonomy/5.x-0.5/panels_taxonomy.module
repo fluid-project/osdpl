@@ -1,0 +1,247 @@
+<?php
+/**
+ * @file
+ * provide a menu for navigating a taxonomy inside panels
+ * set breadcrumbs (done inside)
+ * set title (done inside)
+ * validate arg? can't be done inside
+ * hook_taxonomy (to direct links
+ */
+
+/**
+ * Implementation of hook_term_path
+ *
+ * activated by setting module=panels_taxonomy in vocabulary table
+ */
+
+function panels_taxonomy_term_path($term) {
+  static $handlers;
+  if (!is_array($handlers)) {
+    // TODO: store this unserialized in a seperate table to make this quicker?
+    $handlers = array();
+    $result = db_query('SELECT p.path, b.configuration FROM {panels_pane} b INNER JOIN {panels_page} p ON b.did = p.did WHERE b.type="taxonomy"');
+    while ($pane = db_fetch_object($result)) {
+      $pane->configuration = unserialize($pane->configuration);
+      if ($pane->configuration['primary']) {
+        $handlers[$pane->configuration['vid']] = array('path' => $pane->path, 'position' =>$pane->configuration['arg position']);
+      }
+    }
+  }
+  $handler = $handlers[$term->vid];
+  if (isset($handler)) {
+    return $handler['path'] . '/' . str_repeat('/', $handler['position'] - 1) . $term->tid;
+  }
+}
+
+/**
+ * Output function for the 'taxonomy' content type.
+ */
+function panels_taxonomy_content($conf, $panel_args) {
+  $args = explode('/', $_GET['q']);
+  $argidx = count($args) - count($panel_args) + ($conf['arg position'] - 1);  //absolute argument position
+  $args = array_pad($args, $argidx+1, '');
+
+  // Term display
+  if ($args[$argidx]) {
+    $term = taxonomy_get_term($args[$argidx]);
+    if ($conf['display']['page title']) {
+      panels_taxonomy_set_title($term->name);
+      $block->subject = filter_xss_admin($conf['title']);
+    }
+    else {
+      $block->subject = filter_xss_admin($conf['title']?$conf['title']: $term->name);
+    }      
+    if ($term->vid != $conf['vid']) {
+      $block->subject = 'Error!';
+      $block->content = "Invalid term.";
+      return $block;
+    }
+    if ($conf['display']['description']) {
+       $block->content .= '<div class="description">' . $term->description . '</div>';
+    }
+    if ($conf['display']['top level terms']) {
+      $block->content .= panels_taxonomy_child_terms_list(0, $conf['vid'], $args, $argidx);
+    }
+    if ($conf['display']['children']) {
+      $block->content .= panels_taxonomy_child_terms_list($term->tid, $conf['vid'], $args, $argidx);
+    }
+    if ($conf['display']['breadcrumbs']) {
+      // Build breadcrumb based on first hierarchy of first term
+      // Borrowed from taxonomy_term_page
+      $current = $term;
+      while ($current = array_shift(taxonomy_get_parents($current->tid))) {
+        $args[$argidx] = $current->tid;
+        $breadcrumbs[] = l($current->name, implode('/', $args));
+      }
+      if ($conf['display']['vocabulary']) {
+        $vocabulary = taxonomy_get_vocabulary($conf['vid']);
+        $breadcrumbs[] = l($vocabulary->name, implode('/', array_slice($args, 0, $argidx)));
+      }
+      $breadcrumbs = array_reverse($breadcrumbs);
+      drupal_set_breadcrumb(array_merge(drupal_get_breadcrumb(), $breadcrumbs));
+    }
+
+  } elseif ($conf['display']['vocabulary']) {
+  // Vocabulary display
+    $vocabulary = taxonomy_get_vocabulary($conf['vid']);
+    $block->subject = filter_xss_admin($conf['title']?$conf['title']: $vocabulary->name);
+    if ($conf['display']['description']) {
+      $block->content .= '<div class="description">' . ($vocabulary->description) . '</div>';
+    }
+    if ($conf['display']['top level terms'] OR $conf['display']['children']) {
+      $block->content .= panels_taxonomy_child_terms_list(0, $conf['vid'], $args, $argidx);
+    }
+  }
+  return $block;
+}
+
+function panels_taxonomy_set_title($set_title=NULL) {
+  static $title;
+  if (is_string($set_title)) {
+    $title = $set_title;
+  }
+  if (is_string($title) AND is_null($set_title)) {
+    drupal_set_title($title);
+  }
+}
+
+function panels_taxonomy_footer() {
+  panels_taxonomy_set_title();
+}
+
+function panels_taxonomy_child_terms_list($tid, $vid, $args, $argidx){
+  $links = array();
+  foreach (taxonomy_get_children($tid, $vid) as $child_tid => $child_term) {
+    $args[$argidx] = $child_tid;
+    $links[] = l($child_term->name, implode('/', $args));
+  }
+  return theme('item_list', $links);
+}
+
+/**
+ * Callback function to supply a list of content types.
+ */
+function panels_taxonomy_panels_content_types() {
+  $items['taxonomy'] = array(
+    'title' => t('Taxonomy browser'),
+    'render callback' => 'panels_taxonomy_content',
+    'content_types' => 'panels_taxonomy_content_types',
+    'add callback' => 'panels_taxonomy_add',
+    'edit callback' => 'panels_taxonomy_edit',
+    'title callback' => 'panels_taxonomy_title',
+  );
+  return $items;
+}
+
+/**
+ * Returns the form for a new taxonomy browser.
+ */
+function panels_taxonomy_add($id) {
+  $conf = array('vid' => $id, 'arg position' => 1, 'validate arg' => 1);
+  return panels_taxonomy_edit($conf);
+}
+
+function panels_taxonomy_edit($conf = array()) {
+  $form['#taxonomy'] = TRUE;
+  $form['help'] = array('#weight' => -1, '#value'=>'<div>Provides navigation for a vocabulary. In order to actually display the nodes associated with the current term, you should add one or more views to your panel with a "vocabulary" argument. <br/><em>Note: </em> <strong>The views should be set to "embedded".</strong></div>');
+  $form['vid'] = array(
+    '#type' => 'hidden',
+    '#default_value' => $conf['vid'],
+  );
+  $form['title'] = array(
+    '#type' => 'textfield',
+    '#default_value' => $conf['title'],
+    '#title' => t('Title'),
+    '#description' => t('Title for navigation block. Leave blank to use term name. Enter a single space to <em>really</em> leave blank.'),
+    '#size' => 20,
+  );
+  $form['display'] = array(
+    '#type' => 'checkboxes',
+    '#title' => t('Display'),
+    '#options' => array(
+                        'page title' => t('Term title as page title'), 
+                        'description' => t('Term description'), 
+                        'vocabulary' => t('Display vocabulary if no term is specified'), 
+                        'breadcrumbs' => t('Ancestor terms as breadcrumbs'), 
+                        'children' => t('Child terms'), 
+                        'top level terms' => t('Top-level terms'),
+                        ),
+    '#default_value' => $conf['display'],
+  );
+  $form['arg position'] = array(
+    '#type' => 'textfield',
+    '#default_value' => $conf['arg position'],
+    '#title' => t('Argument position'),
+    '#description' => t('Which argument contains the taxonomy term ID? For example, if the first argument to your "colors" panel is the term ID, so that a typical URL is colors/3, the argument position should be 1.'),
+    '#required' => TRUE,
+    '#size' => 2,
+  );
+  $form['primary'] = array(
+    '#type' => 'checkbox',
+    '#default_value' => $conf['primary'],
+    '#title' => t('Override term links'),
+    '#description' => t('Make this panel the primary handler for terms in this vocabulary, so that term links will point here etc.'),
+  );
+  
+  return $form;
+}
+
+function panels_taxonomy_validate($form, $form_values) {
+  if ((!is_numeric($form_values['arg position'])) OR $form_values['arg position'] < 1) {
+    return form_set_error('arg position', 'Argument position must be a positive integer.');
+  }
+  if ($form_values['primary'] AND ($form_values['arg position'] != 1)) {
+    return form_set_error('primary', t('You can only user the "Override term links" option if the argument position is 1.'));
+  }
+}
+
+function panels_taxonomy_form_alter($form_id, &$form) {
+  // ATTENTION YOU: is this up to date with the current panels?
+  if ($form_id == 'panels_add_content_config_form' OR $form_id == 'panels_edit_pane_config_form') {
+    if ($form['configuration']['#taxonomy']) { 
+      $form['#submit']['panels_taxonomy_submit'] = array();
+    }
+  }
+}
+
+function panels_taxonomy_submit($form_id, $form_values) {
+  //set vocabulary link handler
+  $module = ($form_values['configuration']['primary'] ? 'panels_taxonomy': 'taxonomy');
+
+  // Make sure no other pane is using this vocab
+  $result = db_query('SELECT configuration FROM {panels_pane} WHERE type = "taxonomy" AND pid <> %d', $form_values['pid']);
+  while ($pane = db_fetch_array($result)) {
+    $conf = unserialize($pane['configuration']);
+    if ($conf['primary'] AND $conf['vid'] == $form_values['configuration']['vid']) {
+      $module = 'taxonomy';
+      break;
+    }
+  }
+  db_query('UPDATE {vocabulary} SET module="%s" WHERE vid=%d', $module, $form_values['configuration']['vid']);
+}
+
+/**
+ * Return all content types available.
+ */
+function panels_taxonomy_content_types() {
+  $types = array();
+  foreach (taxonomy_get_vocabularies() as $vid => $vocabulary) {
+    $types[$vid] = array(
+       'title' => $vocabulary->name,
+       'icon' => 'icon_taxonomy_browser.png',
+       'description' => $vocabulary->description,
+       'category' => array(t('Taxonomy browsers'), -1),
+       'path' => drupal_get_path('module', 'panels_taxonomy'),
+    );
+  }
+  return $types;
+}
+
+/**
+ * Returns the administrative title for a type.
+ */
+function panels_taxonomy_title($conf) {
+  $vocabulary = taxonomy_get_vocabulary($form['vid']);
+  return 'Taxonomy browser: '.$vocabulary->name;
+}
+

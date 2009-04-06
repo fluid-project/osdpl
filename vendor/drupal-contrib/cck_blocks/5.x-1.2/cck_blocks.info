@@ -1,0 +1,10 @@
+;$Id: cck_blocks.info,v 1.1 2007/11/16 11:34:24 fokke Exp $
+name = CCK Blocks
+description = Shows CCK fields as block.
+package = CCK
+dependencies = content
+; Information added by drupal.org packaging script on 2008-03-13
+version = "5.x-1.2"
+project = "cck_blocks"
+datestamp = "1205426703"
+

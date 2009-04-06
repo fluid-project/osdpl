@@ -1,0 +1,1243 @@
+<?php
+/**
+ * This is the cck_taxonomy_ssu module for use with CCK.
+ * 
+ * <p>This file contains information on the cck_taxonomy_ssu module. The module adds to
+ * the field types available for inclusion in a content type definition. This field
+ * is made up of a heirarchical, collapsable list of checkboxes for each level of depth
+ * of the selected vocabulary and is used in place of a multi-select box.</p>
+ * <p></p>
+ *
+ * @version $Id: cck_taxonomy_ssu.module,v 1.1.2.5 2008/02/27 09:06:41 rconstantine Exp $;
+ * @package CCK_Taxonomy_SSU
+ * @category NeighborForge
+ * @author Ryan Constantine
+ * @filesource
+ * @license http://www.gnu.org/licenses/gpl.txt GNU_GENERAL_PUBLIC_LICENSE
+ * @link none yet
+ */
+
+/**
+ * This is the length of the cck field name - "cck_taxonomy_ssu_"
+ */
+define('CCK_FIELD_NAME_LENGTH', 17);
+
+//-----------------------------------------CCK Field Hooks-------------------------------------
+//-----------------------------------------CCK Field Hooks-------------------------------------
+//-----------------------------------------CCK Field Hooks-------------------------------------
+
+/**
+ * Implementation of hook_field_info().
+ *
+ * @return
+ *   An array keyed by field type name. Each element of the array is an associative
+ *   array with these keys and values:
+ *   - "label": The human-readable label for the field type.
+ */
+function cck_taxonomy_ssu_field_info() {
+  return array(
+    'cck_taxonomy_ssu' => array('label' => 'Taxonomy vocabulary (super select ultra)'),
+  );
+} // function cck_taxonomy_ssu_field_info()
+
+/**
+ * Implementation of hook_field_settings().
+ *
+ * @param $op
+ *   The operation to be performed.
+ * @param $field
+ *   The field on which the operation is to be performed.
+ * @return
+ *   This varies depending on the operation.
+ *   - "form": an array of form elements to add to
+ *     the settings page.
+ *   - "validate": no return value. Use form_set_error().
+ *   - "save": an array of names of form elements to
+ *     be saved in the database.
+ *   - "database columns": an array keyed by column name, with arrays of column
+ *     information as values.
+ *   - "filters": an array whose values are 'filters'
+ *     definitions as expected by views.module (see Views Documentation).
+ *   - "callbacks": an array describing the field's behaviour regarding hook_field 
+ *     operations. The array is keyed by hook_field operations ('view', 'validate'...)
+ *     and has the following possible values : 
+ *       CONTENT_CALLBACK_NONE     : do nothing for this operation 
+ *       CONTENT_CALLBACK_CUSTOM   : use the behaviour in hook_field(operation)
+ *       CONTENT_CALLBACK_DEFAULT  : use content.module's default bahaviour
+ *     Note : currently only the 'view' operation implements this feature. 
+ *     All other field operation implemented by the module _will_ be executed 
+ *     no matter what.
+ */
+function cck_taxonomy_ssu_field_settings($op, &$field) {
+  switch ($op) {
+    case 'form':
+      $form = array();
+      $form['top_level_freetag'] = array(
+        '#type'           => 'checkbox',
+        '#title'          => t('Disallow freetagging at the top level of the vocabulary'),
+        '#default_value'  => isset($field['top_level_freetag']) ? $field['top_level_freetag'] : 0,
+        '#return_value'   => 1,
+        '#description'    => t('This prevents users from adding branches to your vocabulary\'s top level. If freetagging is enabled and you don\'t provide branches to freetag in, users will not be able to freetag if this is enabled.'),
+      );
+      $form['no_freetag_branching'] = array(
+        '#type'           => 'checkbox',
+        '#title'          => t('Disallow freetagging on leaf terms'),
+        '#default_value'  => isset($field['no_freetag_branching']) ? $field['no_freetag_branching'] : 0,
+        '#return_value'   => 1,
+        '#description'    => t('This prevents users from adding branches to leaf terms. You will have to setup any and all branches manually via some other module as creation of branches will not be possible with this enabled.'),
+      );
+      $form['parents'] = array(
+        '#type'           => 'checkbox',
+        '#title'          => t('Display parent terms as selectable form items'),
+        '#default_value'  => isset($field['parents']) ? $field['parents'] : 0,
+        '#return_value'   => 1,
+        '#description'    => t('Leaving this disabled forces users to select dangling child terms.  Useful for grouping terms with descriptive parent terms that are not themselves needed for display.'),
+      );
+      $form['tags'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Add used terms as node tags?'),
+        '#default_value' => isset($field['tags']) ? $field['tags'] : 0,
+        '#return_value' => 1,
+        '#description' => t('Normally, this module does not include selected vocabulary items in the node\'s taxonomy field, and therefore does not save anything to the term_node table.
+        This prevents nodes from showing up in taxonomy term searches and related operations. Checking this box will make that association and allow tags for nodes.
+        This only affects this content type, not all which use this vocabulary.'),
+      );
+      $form['ratings'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Term ratings'),
+        '#description' => t('This selector will be filled with the text you provide below. It can be used for anything. 
+For example, if the taxonomy are skills, this box could denote skill level. If the taxonomy are movies, the box could contain ratings - G, PG, PG-13, R - or *, **, ***, ****, *****'),
+        '#collapsible' => TRUE,
+        '#collapsed' => TRUE,
+      );
+      $form['ratings']['rate_yesno'] = array(
+        '#type' => 'checkbox',
+        '#title' => t('Show ratings selector'),
+        '#default_value' => isset($field['rate_yesno']) ? $field['rate_yesno'] : '',
+      );
+      $form['ratings']['choice_title'] = array(
+        '#type' => 'textfield',
+        '#title' => t('Choice title'),
+        '#description' => t('Name the set of choices below.'),
+        '#maxlength' => 30,
+        '#size' => 25,
+        '#default_value' => isset($field['choice_title']) ? $field['choice_title'] : '',        
+      );
+      $form['ratings']['choices'] = array(
+        '#type' => 'textarea',
+        '#title' => t('Choices'),
+        '#description' => t('List the choices that should be presented to the user, one per line.'),
+        '#default_value' => isset($field['choices']) ? $field['choices'] : '',
+        '#cols' => 40,
+        '#rows' => 6,
+        '#resizable' => FALSE,
+      );
+      return $form;
+      
+    /*case 'validate':
+      break;*/
+
+    case 'save':
+      return array(
+        'top_level_freetag',
+        'no_freetag_branching',
+        'parents',
+        'tags',
+        'rate_yesno',
+        'choices',
+        'choice_title'
+        );
+
+    case 'database columns':
+      $columns = array(
+        'tid' => array('type' => 'int', 'length' => 10, 'unsigned' => TRUE, 'not null' => TRUE, 'default' => 0),
+        'choice' => array('type' => 'varchar', 'length' => 40, 'not null' => FALSE, 'sortable' => TRUE),
+      );
+      return $columns;
+
+    /*case 'filters':
+       return array(
+          'default' => array(
+            'operator' => 'views_handler_operator_like',//instead of like, I should do ==
+            'handler' => 'views_handler_filter_like',
+          ),
+        );
+    
+    case 'callbacks'://pairs up with cck_taxonomy_ssu_field::view
+      return array(
+      'view' => CONTENT_CALLBACK_CUSTOM,
+      );*/
+  }
+} // function cck_taxonomy_ssu_field_settings()
+
+
+/**
+ * Implementation of hook_field().
+ *
+ * <p>-Validate the user's input.</p>
+ * <p>-Alternatively, present the data for viewing.</p>
+ * @param $op
+ *   What kind of action is being performed.
+ * @param &$node
+ *   The node the action is being performed on.
+ * @param $field
+ *   The field the action is being performed on.
+ * @param &$items
+ *   The contents of the field in this node. Changes to this variable will
+ *   be saved back to the node object.
+ * @return
+ *   This varies depending on the operation.
+ *   - The "load" operation should return an object containing extra values
+ *     to be merged into the node object.
+ *   - The "view" operation should return a string containing an HTML
+ *     representation of the field data.
+ *   - The "insert", "update", "delete", "validate", and "submit" operations
+ *     have no return value.
+ */
+function cck_taxonomy_ssu_field($op, &$node, $field, &$items, $teaser, $page) {
+  switch ($op) {
+    //case 'validate':
+    case 'submit':
+    //case 'insert':
+    //case 'update':
+      //this makes the terms into regular node tags
+      if ($field['tags'] == 1) {
+        $vid = cck_taxonomy_ssu_get_vid($field);
+        foreach ($items as $delta => $item) {
+          if (is_numeric($delta) && isset($items[$delta]['tid']) && $items[$delta]['tid'] == $delta) {
+            $node->taxonomy[$vid][$delta] = $delta;
+          }
+        }
+      }
+      break;
+    case 'view':
+      foreach ($items as $delta => $item) {
+        $items[$delta]['view'] = content_format($field, $item, 'default', $node);
+      }
+      return theme('field', $node, $field, $items, $teaser, $page);
+  }
+} //function cck_taxonomy_ssu_field()
+
+
+/**
+ * Implementation of hook_field_formatter_info().
+ */
+function cck_taxonomy_ssu_field_formatter_info() {
+  return array(
+    'default' => array(
+      'label' => 'Default',
+      'field types' => array('cck_taxonomy_ssu'),
+    ),
+  );
+} // function cck_taxonomy_ssu_field_formatter_info()
+
+
+/**
+ * Implementation of hook_field_formatter().
+ *
+ * <p>Here we format the data for display and make sure it is plain text. It should be as 
+ * elsewhere it was validated as alphanumeric characters only.</p>
+ * <p>The $node argument is necessary so that filter access can be checked on
+ * node preview.</p>
+ * @param $field
+ *   The field the action is being performed on.
+ * @param $item
+ *   An array, keyed by column, of the data stored for this item in this field.
+ * @param $formatter
+ *   The name of the formatter being used to display the field. In our case, we name
+ *   it directly, rather than send it through content_format() and therefore we don't
+ *   use hook_field_formatter_info either.
+ * @param $node
+ *   The node object, for context. Will be NULL in some cases.
+ *   Warning : when displaying field retrieved by Views, $node will not
+ *   be a "full-fledged" node object, but an object containg the data returned
+ *   by the Views query (at least nid, vid, changed)
+ * @return
+ *   An HTML string containing the formatted item.
+ */
+function cck_taxonomy_ssu_field_formatter($field, $item, $formatter, $node) {
+  switch ($formatter) {
+    default:
+      $name = db_result(db_query('SELECT name FROM {term_data} WHERE tid = %d', $item['tid']));
+      if ($item['choice']) {
+        return $name. '    - ' .$item['choice'];
+      }
+      else {
+        return $name;
+      }
+  }
+} // function cck_taxonomy_ssu_field_formatter()
+
+
+/**
+ * Implementation of hook_widget_info().
+ * 
+ * @return
+ *   An array keyed by widget name. Each element of the array is an associative
+ *   array with these keys and values:
+ *   - "label": The human-readable label for the widget.
+ *   - "field types": An array of field type names that can be edited using
+ *     this widget.
+ */
+function cck_taxonomy_ssu_widget_info() {
+  $vocabularies = taxonomy_get_vocabularies();
+  $vocabs = array();
+  foreach ($vocabularies as $vid => $vocab) {
+      $vocabs['cck_taxonomy_ssu_' .$vocab->vid] = array(
+        'label' => $vocab->name,
+        'field types' => array('cck_taxonomy_ssu'),
+      );
+  }
+  return $vocabs;
+} // function cck_taxonomy_ssu_widget_info()
+
+/**
+ * Implementation of hook_widget_settings().
+ * 
+ * @param $op
+ *   The operation to be performed.
+ * @param $widget
+ *   The widget on which the operation is to be performed.
+ * @return
+ *   This varies depending on the operation.
+ *   - "form": an array of form elements to add to the settings page.
+ *   - "validate": no return value. Use form_set_error().
+ *   - "save": an array of names of form elements to be saved in the database.
+ *   - "callbacks": an array describing the widget's behaviour regarding hook_widget 
+ *     operations. The array is keyed by hook_widget operations ('form', 'validate'...)
+ *     and has the following possible values :
+ *       CONTENT_CALLBACK_NONE     : do nothing for this operation 
+ *       CONTENT_CALLBACK_CUSTOM   : use the behaviour in hook_widget(operation)
+ *       CONTENT_CALLBACK_DEFAULT  : use content.module's default bahaviour
+ *     Note : currently only the 'default value' operation implements this feature.
+ *     All other widget operation implemented by the module _will_ be executed 
+ *     no matter what.
+ */
+function cck_taxonomy_ssu_widget_settings($op, $widget) {
+  switch ($op) {
+    case 'callbacks':
+      return array(
+        'default value' => CONTENT_CALLBACK_CUSTOM,
+      );
+  }
+} //function cck_taxonomy_ssu_widget_settings()
+
+
+/**
+ * Implementation of hook_widget().
+ * 
+ * 
+ * Note: I was running in circles because I didn't realize that 'process form values' is called for both the
+ * 'validate' and 'submit' processes and more importantly, it is called AFTER 'validate' and 'submit'. So
+ * you'll notice code duplicated in the 'submit' protion that is also in the 'process form values' portion
+ * due to this fact. This was counter-intuitive to me.
+ * @param $op
+ *   What kind of action is being performed.
+ * @param &$node
+ *   The node the action is being performed on.
+ * @param $field
+ *   The field the action is being performed on.
+ * @param &$items
+ *   The contents of the field in this node. Changes to this variable will
+ *   be saved back to the node object.
+ * @return
+ *   This varies depending on the operation.
+ *   - The "form" operation should return an array of form elements to display.
+ *   - Other operations have no return value.
+ */
+function cck_taxonomy_ssu_widget($op, &$node, $field, &$items) {
+  switch ($op) {
+    case 'prepare form values':
+      $items_transposed = content_transpose_array_rows_cols($items);
+      if ($items_transposed['tid']) {
+        foreach ($items_transposed['tid'] as $key => $value) {
+          if ($value != 0) {
+            $items['default tid'][$value] = $value;
+            if ($items_transposed['choice'] && isset($items_transposed['choice'][$key])) {
+              $items['default choice'][$value] = $items_transposed['choice'][$key];
+            }
+          }
+          unset($items[$key]);
+        }
+      }
+      break;
+
+    case 'form':
+      $vid = substr($field['widget']['type'], CCK_FIELD_NAME_LENGTH);
+      $tss = $field['parents'];// boolean of whether to make the parent categories check-able, or just leaf children
+      $vocabulary = taxonomy_get_vocabulary($vid);
+      $input = $vocabulary->multiple ? 'checkbox' : 'radio';
+      
+      // Get root terms for vocabulary only
+      $terms = taxonomy_get_tree($vid, 0, -1, 1);
+      $form[$field['field_name']]['#tree'] = TRUE;
+      $vocabulary->collapsed = 1;
+      $form[$field['field_name']]['tid'] = _cck_taxonomy_ssu_branch($field, $vid, $vocabulary, $vocabulary->tags);
+      $form[$field['field_name']]['tid']['#weight'] = $field['weight'];
+      $form[$field['field_name']]['tid']['#required'] = $field['required'];
+      
+      _cck_taxonomy_ssu_next_nested($field, $terms, $vid, $input, $tss, $items, $form[$field['field_name']]['tid'], $vocabulary->tags);
+      //cache_clear_all('content:'. $node->nid .':'. $node->vid, 'cache_content');
+      return $form;
+      
+    case 'validate':
+      global $form_values;
+      if (is_array($items['tid'])) {
+        if ($field['required'] == 1) {
+          $choice_made = cck_taxonomy_ssu_validate($items['tid'], $field['field_name'], 1);
+          if ($choice_made != 1) {
+            form_set_error($field['field_name'], t('You must select at least one term.'));
+          }
+        }
+      }
+      break;
+      
+    case 'submit':
+      $vid = substr($field['widget']['type'], CCK_FIELD_NAME_LENGTH);
+      if (is_array($items['tid'])) {
+        cck_taxonomy_ssu_submit($items['tid'], $items, $vid);
+      }
+      unset($items['tid']);//remove original data - now is duplicate
+      break;
+
+    case 'process form values'://comes after submit
+      if (is_array($items['tid'])) {
+        cck_taxonomy_ssu_process($items['tid'], $items);
+      }
+      unset($items['tid']);//remove original data - now is duplicate
+      break;
+  }
+}
+
+//-----------------------------------------Views Module Integration-------------------------------------
+//-----------------------------------------Views Module Integration-------------------------------------
+//-----------------------------------------Views Module Integration-------------------------------------
+
+/**
+ * Implementation of hook_views_tables as found in cck_taxonomy module. Copied and preserved until I figure
+ * out why the author of the patch didn't use the built-in cck/views integration.
+ */
+function cck_taxonomy_ssu_views_tables() {
+  $tables = array();
+  // field_name, type_name, widget_type
+  $result = db_query("SELECT * FROM {node_field_instance} WHERE widget_type LIKE 'cck_taxonomy_ssu_%'");
+  while ($row = db_fetch_object($result)) {
+    // Build the list of options
+    $vid = substr($row->widget_type, CCK_FIELD_NAME_LENGTH);
+    $options = array();
+    $td_result = db_query('SELECT tid, name FROM {term_data} WHERE vid = %d', $vid);
+    while ($term = db_fetch_object($td_result)) {
+      $options[$term->tid] = $term->name;
+    }
+
+    $multiple = db_result(db_query('SELECT multiple FROM {vocabulary} WHERE vid = %d', $vid));
+    if ($multiple) {
+      $table_name = 'content_' .$row->field_name;
+    }
+    else {
+      $table_name = 'content_type_' .$row->type_name;
+    }
+
+    # Get the taxonomy multi select property
+    $vocab = taxonomy_get_vocabulary($vid);
+    $multiple = $vocab->multiple;
+
+    $table = array(
+      'name' => $table_name,
+      'provider' => 'cck_taxonomy_ssu',
+      'join' => array(
+        'left' => array(
+          'table' => 'node',
+          'field' => 'vid',
+        ),
+        'right' => array('field' => 'vid'),
+      ),
+      'filters' => array(
+        $row->field_name. '_tid' => array(
+          'name' => t('CCK Taxonomy: @field_name', array('@field_name' => $row->field_name)),
+          'help' => t('Filter on @field_name terms.', array('@field_name' => $row->field_name)),
+          'operator' => 'views_handler_operator_or',
+          'value' => array('#type' => 'select', '#options' => $options,'#multiple' => $multiple),
+        ),
+      ),
+    );
+    $tables['cck_taxonomy_ssu_' .$row->type_name. '_' .$vid] = $table;
+
+  }
+  return $tables;
+} // function cck_taxonomy_ssu_views_tables()
+
+//-----------------------------------------Misc Hook Implementations-------------------------------------
+//-----------------------------------------Misc Hook Implementations-------------------------------------
+//-----------------------------------------Misc Hook Implementations-------------------------------------
+
+/**
+ * Implementation of hook_form_alter.
+ * 
+ * In the first case, change _content_admin_field where some cck field settings are made. Since vocabulary
+ * was chosen at field creation, and changing it doesn't make sense, disable the radios to select a different
+ * vocabulary. User will have to delete and recreate field in order to change this. Also, adopt the multiple
+ * setting from the vocabulary itself and then disable it.
+ * 
+ * Secondly, change taxonomy_form_vocabulary so that vaocabularies need not be assigned to a content type.
+ * This allows the possibility of associating vocabularies with nodes without them being tagged for searches.
+ * Also, directly going to any taxonomy url will not include nodes so associated.
+ * 
+ * Example use case: A vocabulary of interests in a nodeprofile node where you want your own search mechanism
+ * to sift and show what a user has permission to see, rather than the whole node.
+ */
+function cck_taxonomy_ssu_form_alter($form_id, &$form) {
+  if ($form_id == '_content_admin_field') {
+    if (isset($form['#programmed']) && $form['#programmed'] == TRUE) {
+      //TODO see cck_taxonomy_ssu_taxonomy()::update to see where _content_admin_field is called programmatically
+      $form['#validate']['cck_taxonomy_ssu_content_admin_field_validate'] = array();
+    }
+    else {
+      if ($form['field_type']['#value'] == 'cck_taxonomy_ssu') {
+        // Disable this since there will always only be one choice
+        $form['widget']['widget_type']['#disabled'] = TRUE;
+
+        // Take the multiple setting from the vocabulary.
+        $vid = substr($form['widget']['widget_type']['#default_value'], CCK_FIELD_NAME_LENGTH);
+        $vocab = taxonomy_get_vocabulary($vid);
+        $form['field']['multiple']['#disabled'] = TRUE;
+        $form['field']['multiple']['#value'] = $vocab->multiple;
+      }
+    }
+  }
+  // Change the behavior of the taxonomy vocabulary form so that it isn't
+  // required to assign a content type to a vocabulary.
+  if ($form_id == 'taxonomy_form_vocabulary') {
+    $form['nodes']['#required'] = FALSE;
+  }
+} // function cck_taxonomy_ssu_form_alter()
+
+
+/**
+ * This handler is only added to #programmed instances of the _content_admin_field
+ * form. In those cases the updated value of 'multiple' is stuck in the #post
+ * array.
+ */
+function cck_taxonomy_ssu_content_admin_field_validate($form_id, $form_values, $form) {
+  form_set_value($form['field']['multiple'], $form['field']['multiple']['#post']['field']['multiple']['#value']);
+} // function cck_taxonomy_ssu_content_admin_field_validate()
+
+
+/**
+ * Because the cck_taxonomy_ssu widgets are dependent on the definition of the
+ * taxonomy vocabulary, if the vocabulary changes, we have to update the
+ * field definitions as well.
+ */
+function cck_taxonomy_ssu_taxonomy($op, $type, $array = NULL) {
+  if ($type == 'vocabulary') {
+    // Find out which widget we're dealing with.
+    $widget_type = 'cck_taxonomy_ssu_' .$array['vid'];
+    // Get all the field instances that use the affected widget.
+    $result = db_query("SELECT field_name, type_name FROM {node_field_instance} WHERE widget_type = '%s'", $widget_type);
+    switch ($op) {
+      case 'update':
+        // A vocabulary has been updated. This has potential repercussions on
+        // the CCK fields. Thus we need to re-submit the field configuration
+        // forms with the new values. For each field instance, get the field
+        // configuration form, update its values, and re-submit it using drupal_execute.
+        while ($row = db_fetch_object($result)) {
+          // Getting the form is easy.
+          $form = _content_admin_field($row->type_name, $row->field_name);
+          // Updating the value *looks* easy, but this isn't the end of the story.
+          // This will get stuck in the #post part of the field in the built
+          // form and ignored. Therefore, there is an extra validation handler
+          // for _content_admin_field (see cck_taxonomy_ssu_form_alter and
+          // cck_taxonomy_ssu_content_admin_field_validate). This handler uses
+          // form_set_value to update the global $form_values at the appropriate
+          // time. Very convoluted.
+          $form['field']['multiple']['#value'] = $array['multiple'];
+          drupal_execute('_content_admin_field', $form, $row->type_name, $row->field_name);
+        }
+        break;
+
+      case 'delete':
+        // Delete the fields that are based on this vocabulary.
+        while ($row = db_fetch_object($result)) {
+          $form = _content_admin_field_remove($row->type_name, $row->field_name);
+          drupal_execute('_content_admin_field_remove', $form, $row->type_name, $row->field_name);
+        }
+        break;
+    }
+  }
+} // function cck_taxonomy_ssu_taxonomy()
+
+//-----------------------------------------Helper Functions-------------------------------------
+//-----------------------------------------Helper Functions-------------------------------------
+//-----------------------------------------Helper Functions-------------------------------------
+
+/**
+ * Helper function to pull a vid from a field name string.
+ * 
+ * Since every instance of this field is associated with a particular vocabulary,
+ * that vocabulary's number is appended to the end of the cck field name of
+ * cck_taxonomy_ssu_. For example, cck_taxonomy_ssu_4 would indicate a vid of 4.
+ * This may be problematic in the case where the same vocabulary is wanted to be
+ * used in more than one cck field with different settings. For now, don't do it.
+ */
+function cck_taxonomy_ssu_get_vid($field) {
+  if ($field['widget'] && $field['widget']['type']) {
+    return substr($field['widget']['type'], CCK_FIELD_NAME_LENGTH);
+  }
+} // function cck_taxonomy_ssu_get_vid()
+
+
+/**
+ * Recursive function to allow infinite depth vocabularies to be displayed as fieldsets and
+ * checkboxes.
+ * 
+ * @param array &$terms The result of taxonomy_get_tree for the vocabulary's $vid.
+ * @param array $vid The vocabulary to work on.
+ * @param string $input 'checkbox' or 'radio'.
+ * @param array $tss These are the settings for this module.
+ * @param array &$items This holds the default_values/stored values of terms.
+ * @param array &$form_branch This is a subsection of $form. Each iteration adds to the one
+ * before, then passes itself as the new branch. _cck_taxonomy_ssu_branch() is called for each iteration
+ * and appended to it. 
+ * 
+ * @return since values are passed in via reference, no return value is required.
+ */
+function _cck_taxonomy_ssu_next_nested($field, &$terms, $vid, $input, $tss, &$items, &$form_branch, $freetag) {
+  $fieldweight = -1;
+  foreach ($terms as $index => $term) {
+    $child = taxonomy_get_children($term->tid, $vid);
+    if (count($child)) {
+      if ($tss) {
+        $term->is_parent = TRUE;
+        $term->parent_type  = $input;
+        $term->parent_value = $items['default tid'][$term->tid];
+        if ($items['default choice']) {
+          $term->choice_value = $items['default choice'][$term->tid];
+        }
+      }
+      $form_branch[$term->tid] = _cck_taxonomy_ssu_branch($field, $vid, $term, $freetag, NULL, NULL, 'fieldset', $fieldweight++);
+      _cck_taxonomy_ssu_next_nested($field, $child, $vid, $input, $tss, $items, $form_branch[$term->tid], $freetag);
+    }
+    else{
+      if ($value = $items['default tid'][$term->tid]) {
+        $form_branch[$term->tid]['#collapsed'] = FALSE;
+      }
+      if ($field['rate_yesno'] && $items['default choice']) {
+        $form_branch[$term->tid] = _cck_taxonomy_ssu_branch($field, $vid, $term, $freetag, $value, $items['default choice'][$term->tid], $input, $fieldweight++);
+      }
+      else {
+        $form_branch[$term->tid] = _cck_taxonomy_ssu_branch($field, $vid, $term, $freetag, $value, NULL, $input, $fieldweight++);
+      }
+    }
+  }
+}
+
+
+/**
+ * Create the checkboxes or radio buttons. Terms should be alphabetized as follows: parent of current level, nested parents, terms of current level
+ * 
+ * @param int $vid The ID of the vocabulary in question.
+ * @param object $term The vocabulary term to be worked on.
+ * @param int $value Default is NULL and is not needed if $type is 'fieldset'. Otherwise, this is the term id.
+ * @param string $type The type of form element to create. Possibilities are 'filedset', 'radio' and 'checkbox'.
+ * 'fieldset' is the default. If 'radio' or 'checkbox' is selected, $value should be set.
+ * @param int $fieldweight This aids in the alphabetizing of the display. Only use this if you are going to override
+ * _cck_taxonomy_ssu_next_nested(). Otherwise, when you call this function, leave it to the default of -1.
+ * @return array $form Since the form is not passed in by reference, we need to return the work done to the calling
+ * function.
+ */
+function _cck_taxonomy_ssu_branch($field, $vid, $term, $freetag = 0, $value = NULL, $choice_value = NULL, $type = 'fieldset', $fieldweight = -1) {
+  $required = $field['required'] ? ' <span class="form-required" title="' .t('This field is required.'). '">*</span>' : '';
+  switch ($type) {
+    case 'fieldset':
+      // Automatically expand required vocabs or if the parent term is selected
+      $other_collapse = TRUE;
+      $collapsed = isset($term->collapsed) ? FALSE : $other_collapse;//this will open the first fieldset all the time, but open all children dependent on required-ness
+      $form = array(
+        '#type' => 'fieldset',
+        '#title' => t($term->name).$required,
+        '#collapsible' => TRUE,
+        '#collapsed' => $collapsed, 
+        '#weight' => $fieldweight-1000,//for proper alphabetizing
+        '#description' => t($term->description),
+        '#attributes' => array('class' => 'cck-tssu'),
+      );
+      if ($freetag) {
+        $default_value = NULL;
+        if ($term->module == 'taxonomy' || $term->module == 'og_vocab') {//handle top level
+          if (!$field['top_level_freetag']) {//users not restricted from adding new top level branches
+            if (!$field['no_freetag_branching']) {//if set to 0, show parent and leaves in selector
+              $form['select_parent'] = _cck_taxonomy_ssu_term_select(t('Parent'),
+                                      'select_parent',
+                                      $default_value,
+                                      $vid,
+                                      l(t('Select parent term to put your new term inside'), 'admin/help/taxonomy', NULL, NULL, 'parent'). '.',
+                                      0,
+                                      '<' .t('root'). '>',
+                                      1);
+            }
+            else {//if set to 1, show only parent in selector
+              $form['select_parent'] = _cck_taxonomy_ssu_term_select(t('Parent'),
+                                      'select_parent',
+                                      $default_value,
+                                      $vid,
+                                      l(t('Select parent term to put your new term inside'), 'admin/help/taxonomy', NULL, NULL, 'parent'). '.',
+                                      0,
+                                      '<' .t('root'). '>',
+                                      1,
+                                      1);
+            }
+            $form['term_name'] = array(
+              '#type' => 'textfield',
+              '#title' => t('Add a Term'),
+              '#default_value' => '',
+              '#size' => 30,
+              '#required' => FALSE,
+              '#maxlength' => 255,
+              '#description' => t('Don\'t see a term that fits what you\'re looking for? Add your own. Select which term should be its parent in the drop down list above. Separate multiple terms by a comma.'),
+              '#weight' => 1000,
+            );
+          }
+          else {//users cannot add new top level branches
+            if (!$field['no_freetag_branching']) {//if set to 0, show parent and leaves in selector
+              $form['select_parent'] = _cck_taxonomy_ssu_term_select(t('Parent'),
+                                      'select_parent',
+                                      $default_value,
+                                      $vid,
+                                      l(t('Select parent term to put your new term inside'), 'admin/help/taxonomy', NULL, NULL, 'parent'). '.',
+                                      0,
+                                      '<' .t('none'). '>');
+              $form['term_name'] = array(
+                '#type' => 'textfield',
+                '#title' => t('Add a Term'),
+                '#default_value' => '',
+                '#size' => 30,
+                '#required' => FALSE,
+                '#maxlength' => 255,
+                '#description' => t('Don\'t see a term that fits what you\'re looking for? Add your own. Select which term should be its parent in the drop down list above. Separate multiple terms by a comma.'),
+                '#weight' => 1000,
+              );
+            }
+          }
+        }
+        else {
+          if (!$field['no_freetag_branching']) {//if set to 0, show parent and leaves in selector
+            $form['select_parent'] = _cck_taxonomy_ssu_term_select(t('Parent'),
+                                     'select_parent',
+                                     $default_value,
+                                     $term->tid,
+                                     l(t('Select parent term to put your new term inside'), 'admin/help/taxonomy', NULL, NULL, 'parent'). '.',
+                                     0,
+                                     '<' .t('none'). '>');
+          }
+          else {//if set to 1, show only parent in selector
+            $form['select_parent'] = _cck_taxonomy_ssu_term_select(t('Parent'),
+                                     'select_parent',
+                                     $default_value,
+                                     $term->tid,
+                                     l(t('Select parent term to put your new term inside'), 'admin/help/taxonomy', NULL, NULL, 'parent'). '.',
+                                     0,
+                                     '<' .t('none'). '>',
+                                     0,
+                                     1);
+          }
+          $form['term_name'] = array(
+            '#type' => 'textfield',
+            '#title' => t('Add a Term'),
+            '#default_value' => '',
+            '#size' => 30,
+            '#required' => FALSE,
+            '#maxlength' => 255,
+            '#description' => t('Don\'t see a term that fits what you\'re looking for? Add your own. Select which term should be its parent in the drop down list above. Separate multiple terms by a comma.'),
+            '#weight' => 1000,
+          );
+        }
+      }
+      // If we have vocabulary that is single select and not required or is freetagging we need a way to unselect the term
+      if ((!$required OR $term->tags) AND $term->multiple == 0 AND ($term->module == 'taxonomy' || $term->module == 'og_vocab')) {
+        $form['none'] = array(
+          '#type' => 'radio',
+          '#title' => '<em>' .t('Select None'). '</em>',
+          '#return_value' => -1,
+          '#default_value' => NULL,
+          '#weight' => -10001,
+          '#parents' => array('tid'),
+        );
+      }
+      if ($term->is_parent) {
+        $form['parent'] = _cck_taxonomy_ssu_branch($field, $vid, $term, $freetag, $term->parent_value, $term->choice_value, $term->parent_type);
+        $form['parent']['#weight'] = -10000;//for proper alphabetizing
+      }
+    break;
+    case 'radio':
+      if ($field['rate_yesno']) {
+        $form['set'] = array(
+          '#type' => 'fieldset',
+          '#weight' => $fieldweight,
+        );
+      }
+      $form['set'][] = array(
+        '#type' => 'radio',
+        '#title' => ($term->is_parent ? '<strong>' : '').t($term->name).($term->is_parent ? '</strong>' : ''),
+        '#return_value' => $term->tid,
+        '#default_value' => $value,
+        '#weight' => $fieldweight,
+        '#prefix' => $field['rate_yesno'] ? '<span style="clear:left; float:left; margin-right:2em;">' : '',
+        '#suffix' => $field['rate_yesno'] ? '</span>' : '',
+        '#parents' => array('tid'),
+      );
+      if ($field['rate_yesno']) {
+        $choice_title = $field['choice_title'];
+        $options = cck_taxonomy_ssu_choice_values($field);
+        $form['set'][] = array(
+          '#type' => 'select',
+          '#options' => $options,
+          '#default_value' => $choice_value,
+          '#weight' => $fieldweight+1,
+          '#prefix' => '<span style="clear:right;">',
+          '#suffix' => '</span>',
+          '#description' => $field['choice_title'],
+        );
+      }
+    break;
+    case 'checkbox':
+      if ($field['rate_yesno']) {
+        $form['set'] = array(
+          '#type' => 'fieldset',
+          '#weight' => $fieldweight,
+        );
+      }
+      $form['set'][] = array(
+        '#type' => 'checkbox',
+        '#title' => ($term->is_parent ? '<strong>' : '').t($term->name).($term->is_parent ? '</strong>' : ''),
+        '#return_value' => $term->tid,
+        '#default_value' => $value,
+        '#weight' => $fieldweight,
+        '#prefix' => $field['rate_yesno'] ? '<span style="clear:left; float:left; margin-right:2em;">' : '',
+        '#suffix' => $field['rate_yesno'] ? '</span>' : '',
+      );
+      if ($field['rate_yesno']) {
+        $choice_title = $field['choice_title'];
+        $options = cck_taxonomy_ssu_choice_values($field);
+        $form['set'][] = array(
+          '#type' => 'select',
+          '#options' => $options,
+          '#default_value' => $choice_value,
+          '#weight' => $fieldweight+1,
+          '#prefix' => '<span style="clear:right;">',
+          '#suffix' => '</span>',
+          '#description' => $field['choice_title'],
+        );
+      }
+    break;
+  }
+  return $form;
+}
+
+/**
+ *  Create an array of the allowed values for this field
+ */
+function cck_taxonomy_ssu_choice_values($field) {
+  static $allowed_values;
+
+  if ($allowed_values[$field['field_name']]) {
+    return $allowed_values[$field['field_name']];
+  }
+  $allowed_values[$field['field_name']] = array();
+  if (!$allowed_values[$field['field_name']]) {
+    $list = explode("\n", $field['choices']);
+    $list = array_map('trim', $list);
+    $list = array_filter($list, 'strlen');
+    foreach ($list as $opt) {
+      list($key, $value) = explode('|', $opt);
+      $allowed_values[$field['field_name']][$key] = $value ? $value : $key;
+    }
+  }
+  return $allowed_values[$field['field_name']];
+}
+
+/**
+ * Process the array of checked items into a form that cck expects.
+ * 
+ * It expects $items[$delta] = array('field_name' => $value), so in our case, we need something like:
+ * $items[16] = array('tid' => 16) if our checked item has a tid of 16.
+ * 
+ * @param array &$item This is a portion of the overall &$items array. We can't just pass in the whole
+ * &$items array for processing because of the first foreach statement which looks for $tid's; there
+ * are no $tid's at the top level of &$items. Plus, for recursion, we are providing smaller and smaller
+ * pieces of the array, each of which has $tid's as index elements.
+ * @param array &$items This is the top level because we need to write to it for what cck expects.
+ */
+function cck_taxonomy_ssu_process(&$item, &$items) {
+  foreach ($item as $tid => $value) {
+    if (is_array($item[$tid])) {
+      $items[$tid]['select_parent'] = $item[$tid]['select_parent'];
+      $items[$tid]['term_name'] = $item[$tid]['term_name'];
+      unset($item[$tid]['term_name']);
+      unset($item[$tid]['select_parent']);
+      if ($tid == 'set' && ($item[$tid][0] != 0)) {
+        $items[$item[$tid][0]]['choice'] = $item[$tid][1];
+      }
+      cck_taxonomy_ssu_process($item[$tid], $items);
+    }
+    else {
+      if (($value == 0) || ($value == NULL)) {
+        unset($item[$tid]);
+      }
+      elseif (is_numeric($value)) {
+        $items[$value] = array('tid' => $value);
+        unset($item[$tid]);
+      }
+    }
+  }
+  unset($item);
+  return;
+} // function cck_taxonomy_ssu_process()
+
+function cck_taxonomy_ssu_validate(&$item, $field_name, $reset = 0) {
+    static $choice_made;
+    if ($reset == 1) {
+      $choice_made = 0;
+    }
+    //take care of the initial case - the top level of tid for new term insertion into the vocabulary
+    if (is_array($item) && isset($item['select_parent']) && (($item['select_parent'] != 0) || ($item['select_parent'] == 'X')) && ($item['term_name'] != '')) {
+      $choice_made = 1;
+    }
+    elseif (is_array($item) && isset($item['select_parent']) && $item['select_parent'] == 0 && $item['term_name'] != '') {
+      form_set_error($field_name, t('You must select a parent for the term you are trying to add.'));
+    }
+    foreach ($item as $tid => $value) {
+      //now handle the rest of the cases for new term insertion into the vocabulary (free tagging)
+      if (is_array($item[$tid])) {
+        if (($item[$tid]['select_parent'] != NULL) && ($item[$tid]['select_parent'] != 0) && ($item[$tid]['term_name'] != '')) {
+          $choice_made = 1;
+        }
+        elseif ($item[$tid]['term_name'] != '') {
+          form_set_error($field_name, t('You must select a parent for the term you are trying to add.'));
+        }
+        if (isset($item[$tid]['set'][0]) && ($item[$tid]['set'][0] != 0)) {
+          $choice_made = 1;
+        }
+        $choice_made = cck_taxonomy_ssu_validate($item[$tid], $field_name);
+      }
+    }
+    return $choice_made;
+} // function cck_taxonomy_ssu_validate()
+
+/**
+ * Submit the array of checked items into a form that cck expects.
+ * 
+ * @param array &$item This is a portion of the overall &$items array. We can't just pass in the whole
+ * &$items array for processing because of the first foreach statement which looks for $tid's; there
+ * are no $tid's at the top level of &$items. Plus, for recursion, we are providing smaller and smaller
+ * pieces of the array, each of which has $tid's as index elements.
+ * @param array &$items This is the top level because we need to write to it for what cck expects.
+ */
+function cck_taxonomy_ssu_submit(&$item, &$items, $vid) {
+  $rex = "/,+\s*/";
+  //take care of the initial case - the top level of tid for new term insertion into the vocabulary
+  if (is_array($item) && isset($item['select_parent']) && (($item['select_parent'] != 0) || ($item['select_parent'] == 'X')) && ($item['term_name'] != '')) {
+    if ($item['select_parent'] == 'X') {
+      $item['select_parent'] = 0;
+    }
+    //check to see if there are multiple new terms; if so, break them into an array of terms
+    $new_terms = preg_split($rex, $item['term_name']);
+    if (!empty($new_terms)) {//if the array was made and filled, handle each new term
+      foreach ($new_terms as $index => $term) {
+        if (db_fetch_object(db_query("SELECT td.tid FROM {term_data} td INNER JOIN {term_hierarchy} h WHERE h.parent = %d AND td.name = '%s' AND td.vid = %d", $item['select_parent'], $term, $vid))) {
+          continue;
+        }
+        else {
+          //construct array to pass to taxonomy_save_term; this should allow pathauto to work; repeat below as necessary
+          $term_data = array('name' => $term, 'vid' => $vid, 'description' => '', 'parent' => $item['select_parent']);
+          taxonomy_save_term($term_data);
+          $sql = "SELECT tid FROM {term_data} WHERE vid = %d and name = '%s'";
+          $term_tid = db_fetch_object(db_query($sql, $vid, $term));
+          $term_tid = $term_tid->tid;
+          $item[$term_tid]['set'][0] = $term_tid;//add the new tid to the $item so it can be 'checkedboxed', otherwise user will have to edit the page again and click the box
+          $items[$term_tid] = array('tid' => $term_tid);
+        }
+      }
+      unset($item['term_name']);
+      unset($item['select_parent']);
+    }
+    else {
+      if (db_fetch_object(db_query("SELECT td.tid FROM {term_data} td INNER JOIN {term_hierarchy} h WHERE h.parent = %d AND td.name = '%s' AND td.vid = %d", $item['select_parent'], $item['term_name'], $vid))) {
+        unset($item['term_name']);
+        unset($item['select_parent']);
+        continue;
+      }
+      else {
+        //construct array to pass to taxonomy_save_term; this should allow pathauto to work; repeat below as necessary
+        $term_data = array('name' => $item['term_name'], 'vid' => $vid, 'description' => '', 'parent' => $item['select_parent']);
+        taxonomy_save_term($term_data);
+        $sql = "SELECT tid FROM {term_data} WHERE vid = %d and name = '%s'";
+        $term_tid = db_fetch_object(db_query($sql, $vid, $item['term_name']));
+        $term_tid = $term_tid->tid;
+        $item[$term_tid]['set'][0] = $term_tid;//add the new tid to the $item so it can be 'checkedboxed', otherwise user will have to edit the page again and click the box
+        $items[$term_tid] = array('tid' => $term_tid);
+        unset($item['term_name']);
+        unset($item['select_parent']);
+      }
+    }
+  }
+  else {
+    unset($item['term_name']);
+    unset($item['select_parent']);
+  }
+  
+  foreach ($item as $tid => $value) {
+    if (is_array($item[$tid])) {
+      if (($item[$tid]['select_parent'] != NULL) && ($item[$tid]['select_parent'] != 0) && ($item[$tid]['term_name'] != '')) {//now handle the rest of the cases for new term insertion into the vocabulary (free tagging)
+        //check to see if there are multiple new terms; if so, break them into an array of terms
+        $new_terms = preg_split($rex, $item[$tid]['term_name']);
+        if (!empty($new_terms)) {//if the array was made and filled, handle each new term
+          foreach ($new_terms as $index => $term) {
+            if (db_fetch_object(db_query("SELECT td.tid FROM {term_data} td INNER JOIN {term_hierarchy} h WHERE h.parent = %d AND td.name = '%s' AND td.vid = %d", $item[$tid]['select_parent'], $term, $vid))) {
+              continue;
+            }
+            else {
+              //construct array to pass to taxonomy_save_term; this should allow pathauto to work
+              $term_data = array('name' => $term, 'vid' => $vid, 'description' => '', 'parent' => $item[$tid]['select_parent']);
+              taxonomy_save_term($term_data);
+              $sql = "SELECT tid FROM {term_data} WHERE vid = %d and name = '%s'";
+              $term_tid = db_fetch_object(db_query($sql, $vid, $term));
+              $term_tid = $term_tid->tid;
+              $item[$tid][$term_tid]['set'][0] = $term_tid;//add the new tid to the $item so it can be 'checkedboxed', otherwise user will have to edit the page again and click the box
+              //I'm not sure of the best way to set the default rating if ratings are used. Currently not setting it.
+              $items[$term_tid] = array('tid' => $term_tid);
+            }
+          }
+          unset($item[$tid]['term_name']);
+          unset($item[$tid]['select_parent']);
+        }
+        else {
+          if (db_fetch_object(db_query("SELECT td.tid FROM {term_data} td INNER JOIN {term_hierarchy} h WHERE h.parent = %d AND td.name = '%s' AND td.vid = %d", $item[$tid]['select_parent'], $item[$tid]['term_name'], $vid))) {
+            unset($item[$tid]['term_name']);
+            unset($item[$tid]['select_parent']);
+            continue;
+          }
+          else {
+            //construct array to pass to taxonomy_save_term; this should allow pathauto to work
+            $term_data = array('name' => $item[$tid]['term_name'], 'vid' => $vid, 'description' => '', 'parent' => $item[$tid]['select_parent']);
+            taxonomy_save_term($term_data);
+            $sql = "SELECT tid FROM {term_data} WHERE vid = %d and name = '%s'";
+            $term_tid = db_fetch_object(db_query($sql, $vid, $item[$tid]['term_name']));
+            $term_tid = $term_tid->tid;
+            $item[$tid][$term_tid]['set'][0] = $term_tid;//add the new tid to the $item so it can be 'checkedboxed', otherwise user will have to edit the page again and click the box
+            //I'm not sure of the best way to set the default rating if ratings are used. Currently not setting it.
+            $items[$term_tid] = array('tid' => $term_tid);
+            unset($item[$tid]['term_name']);
+            unset($item[$tid]['select_parent']);
+          }
+        }
+      }
+      else {
+        unset($item[$tid]['term_name']);
+        unset($item[$tid]['select_parent']);
+      }
+      
+      if (is_array($item[$tid]['parent']) && $item[$tid]['parent']['set'][0] != 0) {
+        $val = $item[$tid]['parent']['set'][0];
+        $items[$val] = array('tid' => $val);
+        if (!empty($item[$tid]['parent']['set'][1])) {//Handle the multi-choice options.
+          $items[$val]['choice'] = $item[$tid]['parent']['set'][1];
+        }
+        unset($item[$tid]['parent']);
+      }
+      elseif (is_array($item[$tid]['set']) && $item[$tid]['set'][0] != 0) {
+        $val = $item[$tid]['set'][0];
+        $items[$val] = array('tid' => $val);
+        if (!empty($item[$tid]['set'][1])) {//Handle the multi-choice options.
+          $items[$val]['choice'] = $item[$tid]['set'][1];
+        }
+        unset($item[$tid]);
+      }
+      elseif (is_array($item[$tid]['set']) && $item[$tid]['set'][0] == 0) {
+        unset($item[$tid]);
+      }
+      else {
+        cck_taxonomy_ssu_submit($item[$tid], $items, $vid);
+      }
+    }
+  }
+  unset($item);
+  return;
+} // function cck_taxonomy_ssu_submit()
+
+/**
+ * Get a subset of taxonomy terms and put them in a select box.
+ */
+function _cck_taxonomy_ssu_term_select($title, $name, $value, $tid, $description, $multiple, $blank, $vid = FALSE, $no_branching = FALSE, $exclude = array()) {
+  if ($vid) {//if we're at the top level, do something a little different
+    $tree = taxonomy_get_tree($tid, 0, -1, 1);
+  }
+  else {
+    $tree = array_merge(array($tid => taxonomy_get_term($tid)), taxonomy_get_children($tid));
+  }
+  $options = array();
+  
+  if ($blank == ('<' .t('root'). '>')) {
+    $choice = new stdClass();
+    $choice->option = array('X' => $blank);
+    $options[0] = $choice;
+  }
+  else {
+    $options[0] = $blank;
+  }
+  if ($tree && $no_branching != 1) {
+    foreach ($tree as $term) {
+      if (!in_array($term->tid, $exclude)) {
+        $choice = new stdClass();
+        //the stars mark the current level so that users can easily make sure they are placing a new term at the same level as its siblings
+        $choice->option = array($term->tid => str_repeat('-', $term->depth).($term->tid == $tid ? '*' : '').t($term->name).($term->tid == $tid ? '*' : ''));
+        $options[] = $choice;
+      }
+    }
+    if (!$blank && !$value) {
+      // required but without a predefined value, so set first as predefined
+      $value = $tree[0]->tid;
+    }
+  }
+  else {
+    foreach ($tree as $term) {
+      if (!in_array($term->tid, $exclude) && $term->tid == $tid) {
+        $choice = new stdClass();
+        //the stars mark the current level so that users can easily make sure they are placing a new term at the same level as its siblings
+        $choice->option = array($term->tid => str_repeat('-', $term->depth).('*').t($term->name).('*'));
+        $options[] = $choice;
+      }
+    }
+    if (!$blank && !$value) {
+      // required but without a predefined value, so set first as predefined
+      $value = $tree[0]->tid;
+    }
+  }
+
+  return array('#type' => 'select',
+    '#title' => $title,
+    '#default_value' => $value,
+    '#options' => $options,
+    '#description' => $description,
+    '#multiple' => $multiple,
+    '#required' => FALSE,
+    '#size' => $multiple ? min(9, count($options)) : 0,
+    '#weight' => 999,
+    '#theme' => 'taxonomy_term_select',
+  );
+} // function _cck_taxonomy_ssu_term_select()
+
+//-----------------------------------------Token Module Integration-------------------------------------
+//-----------------------------------------Token Module Integration-------------------------------------
+//-----------------------------------------Token Module Integration-------------------------------------
+
+/**
+ * Implementation of hook_token_list from the token module.
+ * 
+ * See http://drupal.org/project/token for more details.
+ */
+function cck_taxonomy_ssu_token_list($type = 'all') {
+  if ($type == 'field' || $type == 'all') {
+    $tokens = array();
+
+    $tokens['cck_taxonomy_ssu']['raw']       = t("Raw term value.");
+    $tokens['cck_taxonomy_ssu']['formatted'] = t("Formatted term value.");
+
+    return $tokens;
+  }
+} // function cck_taxonomy_ssu_token_list()
+
+/**
+ * Implementation of hook_token_values from the token module.
+ * 
+ * See http://drupal.org/project/token for more details.
+ */
+function cck_taxonomy_ssu_token_values($type, $object = NULL) {
+  if ($type == 'field') {
+    $item = array_shift($object);
+
+    $tokens['raw']       = $item['tid'];
+    $tokens['formatted'] = $item['view'];
+
+    return $tokens;
+  }
+} // function cck_taxonomy_ssu_token_values()
+
+//-----------------------------------------Diff Module Integration-------------------------------------
+//-----------------------------------------Diff Module Integration-------------------------------------
+//-----------------------------------------Diff Module Integration-------------------------------------
+/**
+ * Implementation of hook_diff()
+ */
+function cck_taxonomy_ssu_diff(&$old_node, &$new_node) {
+  $result = array();
+  $cck_info = content_types($new_node->type);
+  if ($cck_info) {
+    foreach ($cck_info['fields'] as $field) {
+      if ($field['type'] == 'cck_taxonomy_ssu') {
+        $old_values = array(); 
+        $new_values = array();
+        if (isset($old_node->$field['field_name'])) {
+          $old_values = cck_taxonomy_ssu_diff_old_values($old_node->$field['field_name']);
+        }
+        if (isset($new_node->$field['field_name'])) {
+          cck_taxonomy_ssu_diff_new_values($new_node->$field['field_name'], $new_values);
+        }
+        $result[] = array(
+          'name' => $field['widget']['label'],
+          'old' => $old_values,
+          'new' => $new_values,
+          'format' => array(
+            'show_header' => true,
+            ),
+          );
+      }
+    }
+  }
+  return $result;
+} // function cck_taxonomy_ssu_diff()
+
+/**
+ * Work with hook_diff to compare old values to new
+ *
+ * @param array $node_part
+ * @return array $result
+ */
+function cck_taxonomy_ssu_diff_old_values(&$node_part) {
+  foreach ($node_part as $item => $value) {
+    $name = db_result(db_query('SELECT name FROM {term_data} WHERE tid = %d', $value['tid']));
+    if ($value['choice']) {
+      $result[] = $name. '    - ' .$value['choice'];
+    }
+    else {
+      $result[] = $name;
+    }
+  }
+  return $result;
+} // function cck_taxonomy_ssu_diff_old_values()
+
+/**
+ * Work with hook_diff to compare new values to old
+ *
+ * @param array $node_part
+ * @param array $result
+ */
+function cck_taxonomy_ssu_diff_new_values(&$node_part, &$result) {
+  if (is_array($node_part)) {
+    foreach ($node_part as $item => $value) {
+      if (is_array($value) && ($item == 'set') && ($value[0] != 0)) {
+        $name = db_result(db_query('SELECT name FROM {term_data} WHERE tid = %d', $value[0]));
+        if ($value[1]) {
+          $result[] = $name. '    - ' .$value[1];
+          //unset($result[0]);
+        }
+        else {
+          $result[] = $name;
+          //unset($result[0]);
+        }
+      }
+      else {
+        cck_taxonomy_ssu_diff_new_values($value, $result);
+      }
+    }
+  }
+}

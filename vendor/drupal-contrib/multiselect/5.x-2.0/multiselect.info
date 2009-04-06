@@ -1,0 +1,11 @@
+; $Id $
+name = Multiselect
+description = "Defines multiple selection field type, to allow easier multi-selection for users."
+dependencies = content nodereference
+package = CCK
+
+; Information added by drupal.org packaging script on 2008-09-29
+version = "5.x-2.0"
+project = "multiselect"
+datestamp = "1222708836"
+

@@ -1,0 +1,640 @@
+<?php
+// $Id: oaliquid.module,v 1.1.2.1 2007/11/28 02:01:41 oyoaha Exp $
+
+include_once(drupal_get_path('module', 'oaliquid') .'/oaliquidpluginhelper.php');
+
+/**
+ * Implementation of hook_help()
+ */
+function oaliquid_help($section) {
+  switch ($section) {
+    case 'admin/help#views':
+      return t('TODO add oaliquid explanation');
+  }
+}
+
+/**
+ * Implementation of hook_menu()
+ */
+function oaliquid_menu($may_cache) {
+  $items = array();
+  if ($may_cache) {
+    $items[] = array('path' => 'admin/build/views/oaliquid',
+      'title' => t('Liquid layout'),
+      'description' => t("More layout for View"),
+      'position' => 'left',
+      'weight' => 0,
+      'callback' => 'oaliquid_admin_page',
+      'access' => user_access('administer views'),
+    );
+    
+    $items[] = array('path' => 'admin/build/views/oaliquid/list',
+      'title' => t('List'),
+      'type' => MENU_DEFAULT_LOCAL_TASK,
+      'weight' => -10);
+
+    $items[] = array('path' => 'admin/build/views/oaliquid/layout',
+      'title' => t('Set layout'),
+      'callback' => 'oaliquid_admin_layout',
+      'access' => user_access('administer views'),
+      'type' => MENU_CALLBACK);
+      
+    $items[] = array('path' => 'admin/build/views/oaliquid/options',
+      'title' => t('Configure layout'),
+      'callback' => 'oaliquid_admin_options',
+      'access' => user_access('administer views'),
+      'type' => MENU_CALLBACK);
+  }
+  
+  return $items;
+}
+
+//--------------------------------------------------------------------------
+
+/**
+ * _views_pre_view
+ */
+function  oaliquid_views_pre_view($view, $items)
+{
+	$o = _get_oaliquid($view, $view->build_type);
+	
+	if(!$o['error'])
+	{
+		//install custom theme view
+		if ($o['theme_views_view'] && !theme_get_function('views_view_' . $view->name)) 
+		{
+			eval('function  theme_views_view_' . $view->name . '($view, $type, $nodes, $level = NULL, $args = NULL) { '.$o['theme_views_view'].' } ');
+		}
+	}
+}
+
+function _oaliquid_theme_view_clean($view, $type, $nodes, $level = NULL, $args = NULL) 
+{
+  $num_nodes = count($nodes);
+
+  if ($type == 'page') 
+  {
+    drupal_set_title(views_get_title($view, 'page'));
+    views_set_breadcrumb($view);
+  }
+
+  if ($num_nodes) 
+  {
+    $output .= views_get_textarea($view, $type, 'header');
+  }
+
+  if ($type != 'block' && $view->exposed_filter) 
+  {
+    $output .= views_theme('views_display_filters', $view);
+  }
+
+  $plugins = _views_get_style_plugins();
+  $view_type = ($type == 'block') ? $view->block_type : $view->page_type;
+  
+  if ($num_nodes || $plugins[$view_type]['even_empty']) 
+  {
+    if ($level !== NULL) 
+    {
+      $output .= views_theme($plugins[$view_type]['summary_theme'], $view, $type, $level, $nodes, $args);
+    }
+    else 
+    {
+      $output .= views_theme($plugins[$view_type]['theme'], $view, $nodes, $type);
+    }
+    
+    $output .= views_get_textarea($view, $type, 'footer');
+
+    if ($type == 'block' && $view->block_more && $num_nodes >= $view->nodes_per_block) 
+    {
+      $output .= theme('views_more', $view->real_url);
+    }
+  }
+  else 
+  {
+    $output .= views_get_textarea($view, $type, 'empty');
+  }
+
+  if ($view->use_pager) 
+  {
+    $output .= theme('pager', '', $view->pager_limit, $view->use_pager - 1);
+  }
+
+  return $output;
+}
+
+/**
+ * theme Liquid
+ */
+function theme_oaliquid($view, $nodes, $type) 
+{
+	return _theme_oaliquid($view, $nodes, $type, 'view');
+}
+
+/**
+ * theme Liquid List
+ */
+function theme_oaliquid_list($view, $nodes, $type) 
+{
+	return _theme_oaliquid($view, $nodes, $type, 'view_list');
+}
+
+function _theme_oaliquid($view, $nodes, $type, $func)
+{
+	$o = _get_oaliquid($view, $type);
+
+	if(!$o['error'])
+	{
+		if($callback = _get_callback($o, $func))
+		return call_user_func_array($callback, array($view, $nodes, $type ,$o));
+	}
+	
+	return $o['error'];
+}
+
+function _get_oaliquid($view, $type)
+{
+	static $results;
+	
+	if(!isset($results))
+	{
+		$results = array();
+	}
+	
+	$key = $type.'_'.$view->vid;
+	
+	if(!isset($results[$key]))
+	{
+		$result = db_fetch_object(db_query('SELECT layout, options, preset FROM {oaliquid} WHERE type = \'%s\' AND vid = %d', $type, $view->vid));
+			
+		if(!$result || !$result->layout)
+		{
+			$results[$key] = array('error'=>theme('links', array(array('title' => t('No plugin selected'), 'href' => url('admin/build/views/oaliquid/layout/'.$view->vid.'/'.$view->name.'/'.$type, NULL, NULL, TRUE))))); 
+		}
+		else
+		{
+			if($result->options!=null && $result->options)
+			{
+				$o = unserialize($result->options);
+			}
+			else
+			{
+				$callback_defaults = oaliquid_get_callback($result->layout, 'defaults');
+				
+				if($callback_defaults)
+				$o = call_user_func_array($callback_defaults, array());
+			}
+			
+			$callback_init_defaults = oaliquid_get_callback($result->layout, 'init_defaults');
+		  
+			if($callback_init_defaults)
+			call_user_func_array($callback_init_defaults, array(&$o));
+			  
+			if($o['teaser']=='body')
+			$o['teaser'] = false;
+			
+			if($result->preset)
+			$o['id'] = $view->vid . '_' . $view->name . '_' . $type . '_' . $result->layout . '_'.$result->preset;
+			else
+			$o['id'] = $view->vid . '_' . $view->name . '_' . $type . '_' . $result->layout . '_noname';
+			
+			//runtime value
+			$o['_layout_'] = $result->layout;
+			$o['_type_'] = $type;
+			$o['_vid_'] = $view->vid;
+			$o['_name_'] = $view->name;
+			//
+			
+			$results[$key] = $o;
+		}
+	}
+	
+	return $results[$key];
+}
+
+function _get_callback(&$o, $func)
+{
+	$key = 'callback_'.$func;
+	
+	$o[$key] = oaliquid_get_callback($o['_layout_'], $func);
+	
+	if(!$o[$key])
+	{
+		if($o[$key]===false)
+		$o['error'] =  theme('links', array(array('title' => t('This Plugin doesn\'t implements the Hook: ' . 'oaliquid_plugin_'.$o['_layout_'].'_'.$func), 'href' => url('admin/build/views/oaliquid/layout/'.$o['_vid_'].'/'.$o['_name_'].'/'.$o['_type_'].'/'.$o['_layout_'], NULL, NULL, TRUE)))); 
+	
+		$o['error'] =  theme('links', array(array('title' => t('Plugin no available'), 'href' => url('admin/build/views/oaliquid/layout/'.$o['_vid_'].'/'.$o['_name_'].'/'.$o['_type_'], NULL, NULL, TRUE)))); 
+	}
+	
+	return $o[$key];
+}
+
+//--------------------------------------------------------------------------
+
+/**
+ * Define the 2 view plugins (Liquid and Liquid List)
+ * TODO check the summary_theme
+ */
+function oaliquid_views_style_plugins() {
+  $items = array();
+  
+  $items['oaliquid'] = array(
+    'name' => t('Liquid: List of Nodes'),
+    'theme' => 'oaliquid',
+    'summary_theme' => 'views_summary',
+  );
+  
+  $items['oaliquid_list'] = array(
+    'name' => t('Liquid: List of Fields'),
+    'theme' => 'oaliquid_list',
+    'summary_theme' => 'views_summary',
+    'validate' => 'views_ui_plugin_validate_list',
+    'needs_fields' => true,
+  );
+  
+  return $items;
+}
+
+//--------------------------------------------------------------------------
+// Plugin
+
+function view_oaliquid_get_layouts() 
+{
+	$layouts = array();
+	$plugins = drupal_get_path('module', 'oaliquid') .'/plugins';
+	
+	if(is_dir($plugins) && $dir = opendir($plugins))
+	{
+		while (($file = readdir($dir)) !== false) 
+		{
+			if (!is_dir($plugins.'/'.$file)) 
+			{
+				if(ereg('([A-Z,a-z,0-9].*)\.inc$', $file, $vars))
+				{
+					if(isset($vars[1]) && $vars[1] && strlen($vars[1])>0)
+					{
+						$layouts[] = $vars[1];
+					}
+				}
+			}
+		}
+		
+		closedir($dir);
+	}
+	
+	return $layouts;
+}
+
+function oaliquid_get_callback($plugin, $function) 
+{
+	if(!$plugin)
+	return null;
+	
+	include_once(drupal_get_path('module', 'oaliquid') .'/plugins/'.$plugin.'.inc');
+	
+	$func = 'oaliquid_plugin_'.$plugin.'_'.$function;
+	
+	if(!function_exists($func))
+	return false;
+	
+	return $func;
+}
+
+//--------------------------------------------------------------------------
+// Plugin helper function
+
+function oaliquid_get_options($vid, $name, $type, $layout, $preset, $callback) 
+{
+	$view = db_fetch_object(db_query('SELECT options FROM {oaliquid} WHERE type = \'%s\' AND vid =  %d', $type, $vid));
+
+	if($view->options!=null && $view->options)
+	{
+		$o = unserialize($view->options);
+		
+		//TODO fix legacy oaliquid version
+		if(isset($o['id']))
+		{
+			unset($o['id']);
+			
+			$options = serialize($o);
+			db_query('UPDATE {oaliquid} SET preset = NULL, options = \'%s\' WHERE type = \'%s\' AND vid = %d', $options, $type, $vid);
+		}
+	}
+	else
+	{
+		$o = call_user_func_array($callback, array());
+	}
+	
+	if($preset)
+	$o['id'] = $vid . '_' . $name . '_' . $type . '_' . $layout . '_' . $preset;
+	else
+	$o['id'] = $vid . '_' . $name . '_' . $type . '_' . $layout . '_noname';
+	
+	return $o;
+}
+
+function oaliquid_submit_plugin_form($o, $vid, $name, $type, $layout, $preset, &$form) 
+{
+	//---
+	//save and load preset
+	
+	$form['block_io'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Preset'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+      '#tree' => FALSE,
+    );
+    
+    $form['block_io']['save_action'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Save'),
+      '#default_value' => false,
+    );
+    
+    $form['block_io']['save_preset'] = array(
+      '#type' => 'textfield',
+      '#title' => t('Preset name'),
+      '#default_value' => $preset,
+    );
+    
+    $form['block_io']['load_action'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Load'),
+      '#default_value' => false,
+    );
+    
+    $options = array();
+    $result = db_query('SELECT name FROM {oaliquid_preset} WHERE layout = \'%s\'', $layout);
+  
+  	while ($view = db_fetch_object($result))
+  	{
+		$options[$view->name] = $view->name;
+  	}
+  	
+	$form['block_io']['load_preset'] = array(
+	  '#type' => 'select',
+      '#title' => t('Load preset'),
+      '#default_value' => isset($options[$preset])? $options[$preset] : $options[0],
+      '#options' => $options,
+	);
+	
+	//---
+
+	$form['vid'] = array('#type' => 'value', '#value' => $vid);
+	$form['name'] = array('#type' => 'value', '#value' => $name);
+	$form['type'] = array('#type' => 'value', '#value' => $type);
+	$form['layout'] = array('#type' => 'value', '#value' => $layout);
+	$form['preset'] = array('#type' => 'value', '#value' => $preset);
+
+	$form['id'] = array('#type' => 'value', '#value' => $o['id']);
+
+	$form['submit'] = array(
+	  '#type' => 'submit',
+	  '#value' => t('Save'),
+	);
+	
+	$form['submitandedit'] = array(
+	  '#type' => 'submit',
+	  '#value' => t('Save and Edit'),
+	);
+}
+
+function oaliquid_plugin_submit($form_id, $form_values, $o)
+{
+	$id = $form_values['id'];
+	
+	$vid = $form_values['vid'];
+	$name = $form_values['name'];
+	$type = $form_values['type'];
+	$layout = $form_values['layout'];
+	$preset = $form_values['preset'];
+	
+	//use the include helper file
+	oaliquid_plugin_submit_helper($form_id, $form_values, $o);
+	
+	//submitandedit
+	if($form_values['op']==t('Save and Edit'))
+	$return = 'admin/build/views/oaliquid/options/'.$vid.'/'.$name.'/'.$type.'/'.$layout.'/'.urlencode($preset);
+	else
+	$return = 'admin/build/views/oaliquid';
+	
+	if($form_values['save_action'] && $form_values['save_preset'])
+	{
+		$options = serialize($o);
+		
+		$preset = $form_values['save_preset'];
+		
+		db_query('DELETE FROM {oaliquid_preset} WHERE name = \'%s\' AND layout = \'%s\'', $preset, $layout);
+		db_query('INSERT INTO {oaliquid_preset} (name, layout, options) VALUES (\'%s\', \'%s\', \'%s\')', $preset, $layout, $options);
+	
+		drupal_set_message(t('The preset').' '.$preset.' '.t('has been saved'));
+	}
+	
+	if($form_values['load_action'])
+	{
+		$view = db_fetch_object(db_query('SELECT options FROM {oaliquid_preset} WHERE name = \'%s\' AND layout = \'%s\'', $form_values['load_preset'], $layout));
+		
+		if($view)
+		{
+			$preset = $form_values['load_preset'];
+			$o = unserialize($view->options);
+			
+			drupal_set_message(t('The preset').' '.$preset.' '.t('has been loaded'));
+			$return = 'admin/build/views/oaliquid/options/'.$vid.'/'.$name.'/'.$type.'/'.$layout.'/'.urlencode($preset);
+		}
+	}
+
+	$options = serialize($o);
+
+	if($preset)
+	db_query('UPDATE {oaliquid} SET preset = \'%s\', options = \'%s\' WHERE type = \'%s\' AND vid = %d', $preset, $options, $type, $vid);
+	else
+	db_query('UPDATE {oaliquid} SET preset = NULL, options = \'%s\' WHERE type = \'%s\' AND vid = %d', $options, $type, $vid);
+
+	drupal_set_message(t('The configuration have been updated for').' '.$name);
+    return $return;
+}
+
+//--------------------------------------------------------------------------
+// admin callback
+
+function oaliquid_admin_layout_form($vid, $name, $type, $layout) 
+{
+	 $layouts = view_oaliquid_get_layouts();
+	 $count = count($layouts);
+
+	 if($count)
+	 {
+	 	 sort($layouts);
+	 	 $options = array();
+	 	 
+	 	 $options['NULL'] = '<none>';
+	 	 
+	 	 for($i=0;$i<$count;$i++)
+	 	 $options[$layouts[$i]] = $layouts[$i];
+	 	
+		 $form['layouts'] = array(
+		  '#type' => 'select',
+	      '#title' => t('Choose a oaliquid layout for').' '.$name.' ('.$type.')',
+	      '#default_value' => ($layout)? $layout : (isset($options['oaliquid'])? $options['oaliquid'] : $layouts[0]),
+	      '#options' => $options,
+	      '#description' => t('Each plugin can have is how set of options'),
+		);
+		
+		$form['vid'] = array('#type' => 'value', '#value' => $vid);
+		$form['name'] = array('#type' => 'value', '#value' => $name);
+		$form['type'] = array('#type' => 'value', '#value' => $type);
+		$form['layout'] = array('#type' => 'value', '#value' => $layout);
+	}
+
+	$form['submit'] = array(
+	  '#type' => 'submit',
+	  '#value' => t('Set'),
+	);
+	
+	return $form;
+}
+
+function oaliquid_admin_layout_form_submit($form_id, $form_values) 
+{
+  $name = $form_values['name'];
+  $layout = $form_values['layout'];
+  $new_layout = $form_values['layouts'];
+
+  if($layout!=$new_layout)
+  {
+  	$vid = $form_values['vid'];
+  	$type = $form_values['type'];
+  	
+  	$view = db_fetch_object(db_query('SELECT vid, layout FROM {oaliquid} WHERE type = \'%s\' AND vid = %d', $type, $vid));
+	
+	if($view)
+  	{
+  		if($new_layout=='NULL')
+  		{
+  			db_query('DELETE FROM {oaliquid} WHERE type = \'%s\' AND vid = %d', $type, $vid);
+  		}
+  		else
+  		{
+  			if($new_layout=='NULL')
+  			db_query('UPDATE {oaliquid} SET layout = NULL , options = NULL WHERE type = \'%s\' AND vid = %d', $type, $vid);
+  			else
+  			db_query('UPDATE {oaliquid} SET layout = \'%s\' , options = NULL WHERE type = \'%s\' AND vid = %d', $new_layout, $type, $vid);
+  		}
+  	}
+  	else
+  	{
+  		if($new_layout!='NULL')
+  		{
+  			db_query('INSERT INTO {oaliquid} (type, vid, layout, options) VALUES (\'%s\', %d, \'%s\', NULL)', $type, $vid, $new_layout);
+  		}
+  	}
+  }
+  
+  drupal_set_message(t('The layout') . ' ' . $new_layout . ' ' . t('have been set for') . ' ' . $name);
+  return 'admin/build/views/oaliquid';
+}
+
+function oaliquid_admin_layout($vid, $name, $type, $layout=null) 
+{
+	return drupal_get_form('oaliquid_admin_layout_form', $vid, $name, $type, $layout);
+}
+
+function oaliquid_admin_options($vid, $name, $type, $layout, $preset=null) 
+{
+	$callback = oaliquid_get_callback($layout, 'form');
+	
+	if(!$callback)
+	return '';
+	
+	return drupal_get_form($callback, $vid, $name, $type, $layout, $preset);
+}
+
+function oaliquid_admin_page($visibility=null) 
+{
+  views_load_cache();
+
+  $output = '';
+  $result = db_query('SELECT {view_view}.vid, {view_view}.name, {oaliquid}.type, {oaliquid}.layout, {oaliquid}.preset FROM {view_view} LEFT JOIN {oaliquid} ON {view_view}.vid = {oaliquid}.vid ORDER BY name');
+  
+  $views = array();
+  
+  while ($view = db_fetch_object($result)) 
+  {
+  	  $key = $view->name.'_'.$view->vid;
+  	  
+  	  if($view->type)
+  	  {
+  	  	if(!$views[$key]['_all_'])
+  	  	$views[$key]['_all_'] = array('vid'=>$view->vid, 'name'=>$view->name, 'type'=>'_all_');
+  	  
+  	  	$views[$key][$view->type] = array('vid'=>$view->vid, 'name'=>$view->name, 'type'=>$view->type, 'layout'=>$view->layout, 'preset'=>$view->preset);
+  	  }
+  	  else
+  	  if($visibility!='hide')
+  	  {
+  	  	$views[$key]['_none_'] = array('vid'=>$view->vid, 'name'=>$view->name, 'type'=>'_none_');
+  	  }
+  }
+
+  $rows = array();
+  $types = array('page', 'block');
+
+  foreach($views as $view)
+  {
+  	if($view['_none_'])
+  	{
+  		$v = $view['_none_'];
+  		
+  		foreach($types as $type)
+		{
+		  	$actions = theme('links', array(
+		        array('title' => t('Set layout'), 'href' => url('admin/build/views/oaliquid/layout/'.$v['vid'].'/'.$v['name'].'/'.$type, NULL, NULL, TRUE)),
+		      ));
+		      
+		    $rows[] = array($v['name'], $type, null, $actions);
+		}
+  	}
+  	else
+  	{
+  		foreach($view as $v)
+  		{
+  			if($v['type']=='_all_')
+  			continue;
+  			
+			$actions = theme('links', array(
+		        array('title' => t('Set layout'), 'href' => url('admin/build/views/oaliquid/layout/'.$v['vid'].'/'.$v['name'].'/'.$v['type'].'/'.$v['layout'], NULL, NULL, TRUE)), 
+		        array('title' => t('Configure'), 'href' => url('admin/build/views/oaliquid/options/'.$v['vid'].'/'.$v['name'].'/'.$v['type'].'/'.$v['layout'].'/'.$v['preset'], NULL, NULL, TRUE))
+		      ));
+		      
+		    $rows[] = array($v['name'], $v['type'], $v['layout'], $actions);
+  		}
+  		
+		foreach($types as $type)
+		{
+			if(!$view[$type])
+			{
+				$v = $view['_all_'];
+				
+				$actions = theme('links', array(
+		        	array('title' => t('Set layout'), 'href' => url('admin/build/views/oaliquid/layout/'.$v['vid'].'/'.$v['name'].'/'.$type, NULL, NULL, TRUE)),
+			      ));
+			      
+			    $rows[] = array($v['name'], $type, null, $actions);
+			}
+		}
+  	}
+  }
+
+  if ($rows) 
+  {
+  	$header = array(t('View'), t('Type'), t('Layout'), t('Actions'));
+    $output .= theme('table', $header, $rows, array("cellpadding" => "4"));
+  }
+  else 
+  {
+    return t('<p>No views have currently been defined.</p>');
+  }
+  
+  return $output;
+}

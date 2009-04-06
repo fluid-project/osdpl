@@ -1,0 +1,12 @@
+; $Id: textfield_autocomplete.info,v 1.1 2007/08/31 16:18:43 linuxbox Exp $
+name = Textfield Autocomplete
+description = Defines a text field with an autocomplete widget.
+version = "$Name: DRUPAL-5 $"
+dependencies = content
+package = CCK
+
+; Information added by drupal.org packaging script on 2007-09-01
+version = "5.x-1.x-dev"
+project = "textfield_autocomplete"
+datestamp = "1188605298"
+

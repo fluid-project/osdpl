@@ -1,0 +1,44 @@
+fieldset.multiselect
+{
+  width: 90%;
+  /*keeps the select boxes from dropping down when window is shrunk*/
+  min-width: 300px;
+}
+
+fieldset.multiselect div 
+{
+  float: left;
+  width: 40%;
+}
+
+fieldset.multiselect div select
+{
+  width: 100%;
+}
+
+select.selected
+{
+  width: 100%;
+}
+
+fieldset.multiselect span.select img
+{
+  display: block;
+  float: left;
+  margin-top: 50px;
+}
+
+
+fieldset.multiselect span.deselect img
+{
+  display: block;
+  float: left;
+  margin-top: 100px;
+  margin-left: -45px;
+}
+
+fieldset.multiselect div.description
+{
+  width: 100%;
+}
+

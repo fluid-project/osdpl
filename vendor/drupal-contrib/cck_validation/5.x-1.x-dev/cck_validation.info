@@ -1,0 +1,17 @@
+; $Id: cck_validation.info,v 1.2 2008/01/30 01:44:53 derhasi Exp $
+name = CCK Validation
+description = Allows the user to add custom validation to content-types.
+dependencies = content
+package = CCK
+
+; version added by drupal.org packaging script on 2006-11-27
+version = "5.x-0.1"
+
+
+
+
+; Information added by drupal.org packaging script on 2008-07-01
+version = "5.x-1.x-dev"
+project = "cck_validation"
+datestamp = "1214870498"
+

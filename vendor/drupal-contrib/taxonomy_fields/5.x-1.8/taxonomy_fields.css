@@ -1,0 +1,54 @@
+
+/* $Id: taxonomy_fields.css,v 1.1 2008/03/12 11:00:39 boneless Exp $*/
+
+.taxonomy_fields_loading {
+  width:64px;
+  height:74px;
+  background:url(loading.gif) no-repeat;
+}
+
+select#sel_term.form-taxonomy-fields{
+  background: url(throbber.gif) no-repeat 82% -7%;
+}
+
+html.js select.form-taxonomy-fields {
+  background: url(throbber.gif) no-repeat 82% -7%;
+}
+
+html.js select.form-taxonomy-fields-running {
+  background: url(throbber.gif) no-repeat 82% 77% ;
+}
+html.js select.form-taxonomy-fields option {
+  background-color: #fff;
+}
+
+html.js select.form-taxonomy-fields-vocabulary {
+  background: url(throbber.gif) no-repeat 75% -7%;
+}
+
+html.js select.form-taxonomy-fields-vocabulary-running {
+  background: url(throbber.gif) no-repeat 75% 77% ;
+}
+
+html.js select.form-taxonomy-fields-vocabulary option {
+  background-color: #fff;
+}
+
+html.js select.form-taxonomy-fields-multiple-running {
+  background: url(throbber.gif) no-repeat 75% -18px;
+}
+
+html.js select.form-taxonomy-fields-multiple {
+  background: url(ring.gif) no-repeat 75% 2px;;
+}
+
+.taxonomy-fields-hidden {
+  position:absolute;
+  left:-1000px;
+  top:-1000px;
+  visibility: hidden;
+  margin:0;
+  padding:0;
+  font-size:0;
+  border:0;
+}

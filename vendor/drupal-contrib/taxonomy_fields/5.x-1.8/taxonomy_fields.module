@@ -1,0 +1,3296 @@
+<?php
+
+// $Id: taxonomy_fields.module,v 1.1.2.1.2.10 2008/03/16 22:44:33 boneless Exp $
+
+/**
+ * @file
+ * Allows administrators to assign CCK fields to taxonomy terms.
+ */
+
+define('CONTENT_DB_STORAGE_PER_FIELD', 0);
+define('CONTENT_DB_STORAGE_PER_CONTENT_TYPE', 1);
+
+define('CONTENT_CALLBACK_NONE', 0x0001);
+define('CONTENT_CALLBACK_DEFAULT', 0x0002);
+define('CONTENT_CALLBACK_CUSTOM', 0x0004);
+
+include_once(drupal_get_path('module', 'content').'/content_admin.inc');
+
+/**
+ * Implementation of hook_help().
+ */
+function taxonomy_fields_help($section) {
+  switch ($section) {
+  	case 'admin/help#taxonomy_fields':
+  		$output.='<p>'.t('The taxonomy_fields module brings two important modules together: CCK and taxonomy. As CCK can assign fields to content types, taxonomy_fields can assign CCK fields to categories. By doing this, content types are not limited to the same range of fields anymore.
+  			Nodes of the same content type can now contain absolutely different fields. Simply assign a field to a term and every node in this category will now contain this field. When choosing a new term for a node, the field-form will appear next time on the edit-page.').'</p>';
+  		$output.=t('<p>Further more taxonomy_fields gives you two extra options:</p>
+  			<ul>
+  			<li>Universal values for fields. When activated, this field will always carry the same value for this term, users can not edit the value. This option can be used for standard disclaimers for example. Does not work with image-fields and file-fields.</li>
+  			<li>Ancestor fields. When activated, all nodes will show the fields of all ancestors of this term. Can be used with single and multiple hierarchies, so you don\'t have to assign the same field to all of your sub-categories.</li>
+  			</ul>'); 
+  		$output .= t('<p>You can</p>
+  		<ul>
+  		<li>assign already existing CCK fields to terms at <a href="@add_existing">administer &gt;&gt; content management &gt;&gt; taxonomy fields &gt;&gt; add existing field</a>.</li>
+  		<li>create new fields and assign them to terms at <a href="@add_new">administer &gt;&gt; content management &gt;&gt; taxonomy fields &gt;&gt; add new field</a>.</li>
+  		<li>view a list of assigned fields to terms at <a href="@taxonomy_fields">administer &gt;&gt; content management &gt;&gt; taxonomy fields</a>.</li>
+  		<li>enable taxonomy fields for a content type at <a href="@content_types">administer &gt;&gt; content management &gt;&gt; content types</a>.</li>
+  		</ul>
+  		', array('@add_existing' => url('admin/content/taxonomy_fields/add_existing'),'@add_new' => url('admin/content/taxonomy_fields/add_new'),
+  		 '@taxonomy_fields' => url('admin/content/taxonomy_fields'), '@content_types' => url('admin/content/types')));
+  		 return $output;
+  	case 'admin/content/taxonomy_fields':
+  		return t('<p>Taxonomy fields are CCK fields assigned to terms. They show up for every node in a category.</p>
+  			<p>Make sure you enable the \'taxonomy fields\' setting in the <a href="!content_type_settings">content types settings</a>!</p>', array('!content_type_settings' => url('admin/content/types')));
+  }
+}
+
+/**
+ * Implementation of hook_perm().
+ */
+function taxonomy_fields_perm() {
+  return array('administer taxonomy_fields');
+}
+
+/**
+ * Implementation of hook_menu().
+ */
+function taxonomy_fields_menu($may_cache) {
+
+	$items = array();
+   	$access = user_access('administer taxonomy_fields');
+
+   	if ($may_cache) {
+	    $items[] = array(
+	      'path' => 'admin/content/taxonomy_fields',
+	      'title' => t('Taxonomy fields'),
+	      'callback' => '_taxonomy_fields_list',
+	      'access' => $access,
+	      'description' => t("Assign CCK fields to categories."),
+	    );
+	    $items[] = array(
+	      'path' => 'admin/content/taxonomy_fields/manage_taxonomy_fields',
+	      'title' => t('List'),
+	      'type' => MENU_DEFAULT_LOCAL_TASK,
+	      'weight' => -10,
+	    );
+        $items[] = array(
+          'path' => 'admin/content/taxonomy_fields/manage_fields',
+          'title' => t('Manage fields'),
+          'type' => MENU_LOCAL_TASK,
+          'callback' => 'drupal_get_form',
+          'callback arguments' => array('taxonomy_fields_field_overview_form'),
+          'access' => $access,
+        );	      
+
+        $items[] = array(
+          'path' => 'admin/content/taxonomy_fields/manage_taxonomy',
+          'title' => t('Manage taxonomy'),
+          'type' => MENU_LOCAL_TASK,
+          'callback' => 'drupal_get_form',
+          'callback arguments' => array('_taxonomy_fields_manage_taxonomy_form'),
+          'access' => $access,
+        );      
+	    $items[] = array(
+	      'path' => 'admin/content/taxonomy_fields/add_existing',
+	      'title' => t('Add existing field'),
+	      'type' => MENU_LOCAL_TASK,
+	      'callback' => '_taxonomy_fields_term_field_relation_add_existing',
+	      'access' => $access,
+	    );
+	    $items[] = array(
+	      'path' => 'admin/content/taxonomy_fields/add_new',
+	      'title' => t('Add new field'),
+	      'type' => MENU_LOCAL_TASK,
+	      'callback' => '_taxonomy_fields_term_field_relation_add_new',
+	      'access' => $access,
+	    );
+   	}
+   	else {
+   	    $items[] = array(
+              'path' => 'admin/content/taxonomy_fields/ajax',
+              'title' => t('AJAX'),
+              'callback' => '_taxonomy_fields_ajax',                   
+              'access' => 1,
+              'type' => MENU_CALLBACK,
+          ); 
+   	  
+   		
+       if (arg(0) == 'admin' && arg(1) == 'content' && arg(2) == 'taxonomy_fields' && is_numeric(arg(3))) {
+    	
+    	  $term = taxonomy_fields_terms(arg(3));
+          $items[] = array(
+		      'path' => 'admin/content/taxonomy_fields/'. arg(3),
+		      'title' => t($term['name']),
+              'callback' => 'drupal_get_form',        
+              'callback arguments' => array('taxonomy_fields_display_overview_form'),
+		      'access' => $access,
+		      'type' => MENU_CALLBACK,
+		  ); 
+		  $items[] = array(
+		      'path' => 'admin/content/taxonomy_fields/'. arg(3).'/fields',
+		      'title' => t('Display settings'),
+		      'type' => MENU_DEFAULT_LOCAL_TASK,
+		  );
+          if(module_invoke('taxonomy','get_parents',$term)){  
+            $items[] = array(
+              'path' => 'admin/content/taxonomy_fields/'. arg(3).'/edit',
+              'title' => t('Term settings'),
+              'type' => MENU_LOCAL_TASK,
+              'access' => $access,
+              'callback' => 'drupal_get_form',
+              'callback arguments' => array('_taxonomy_fields_term'),
+            ); 
+          }     
+       
+          if (arg(4) == 'fields' && arg(5) && isset($term['fields'][arg(5)])) {           	 	
+	          $items[] = array(
+	            'path' => 'admin/content/taxonomy_fields/'. arg(3) .'/fields/'. arg(5),
+	            'title' => t($term['fields'][arg(5)]['widget']['label']),
+	            'callback' => 'drupal_get_form',
+	            'access' => $access,
+	            'callback arguments' => array('_taxonomy_fields_edit_field',arg(3), arg(5)),
+	            'type' => MENU_CALLBACK,
+	          );
+	          $items[] = array(
+	            'path' => 'admin/content/taxonomy_fields/'. arg(3) .'/fields/'. arg(5) .'/remove',
+	            'title' => t('remove field'),
+	            'callback' => 'drupal_get_form',
+	            'access' => $access,
+	            'callback arguments' => array('_taxonomy_fields_edit_field_remove',arg(3), arg(5)),
+	            'type' => MENU_CALLBACK,
+	          );       
+          }
+       }
+   	}
+   	return $items;
+}
+
+function _taxonomy_fields_ajax(){
+  $op = $_POST['op'];
+  switch ($op){
+    
+    case 'get_terms': 
+      header("Content-Type: text/xml");
+      echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
+      
+      $output = '<list>';
+      $vid = $_POST['vid']; 
+      $enable = variable_get('tax_fields_voc_'.$vid,0);
+      if($enable == '1'){
+        $output .= '<vocabulary voc_enable="1" vid="'.$vid.'" />';
+      }
+      else{
+        $output .= '<vocabulary voc_enable="0" vid="'.$vid.'" />';
+      }    
+      $query = db_query('SELECT * FROM {term_data} td LEFT JOIN {term_hierarchy} th ON td.tid = th.tid WHERE td.vid=%d AND th.parent!=0',$vid);   
+      while ($term = db_fetch_object($query)) {
+        $output .= '<term tid="'.$term->tid.'" title="'.$term->name.'" />';
+      }   
+      $output .= '</list>';
+      echo $output;
+      break;
+      
+    case 'get_fields':
+      header("Content-Type: text/xml");
+      echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
+      $form = drupal_get_form('taxonomy_fields_get_fields_form');  
+      $form = explode('id="taxonomy-fields-get-fields-form">', $form);
+      $form = explode('<div>', $form[1], 2);
+      $form = str_replace('</div></form>', '', $form[1]);
+      $form = explode('value="taxonomy_fields_get_fields_form"  />', $form);
+      $form2 = explode('<input type="hidden" name="form_token"', $form[0]);
+      echo str_replace("\n", "", $form2[0].$form[1]);
+      break;
+            
+    case 'get_fields_checkbox':
+      header("Content-Type: text/xml");
+      echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>";
+      $form = drupal_get_form('taxonomy_fields_get_fields_form_checkbox');  
+      $form = explode('id="taxonomy-fields-get-fields-form-checkbox">', $form);
+
+      $form = explode('<div>', $form[1], 2);
+      $form = str_replace('</div></form>', '', $form[1]);
+
+      $form = explode('value="taxonomy_fields_get_fields_form_checkbox"  />', $form);
+      $form2 = explode('<input type="hidden" name="form_token"', $form[0]);      
+      echo str_replace("\n", "", $form2[0].$form[1]);
+      //echo $form2[0].$form[1];
+      break;
+      
+    case 'get_term_details':
+      $output = '<text>';
+      $tid = $_POST['tid'];
+      $query = db_query('SELECT ancestors FROM {taxonomy_fields_ancestors} WHERE tid=%d',$tid);
+      $result = db_fetch_array($query);
+      $ancestors = module_invoke('taxonomy_fields','get_ancestor_fields',$tid);
+      //ancestors of $tid and their fields
+      $ancestor_output = '';
+      if(empty($ancestors)){
+        $ancestor_output.='none';
+      }
+      else{
+        foreach($ancestors as $ancestor){
+          $ancestor_output .= $ancestor['widget']['label'].' ('.$ancestor['field_name'].') assigned to '.$ancestor['term'].'<br />';
+        }
+      }
+      $output .= '<label for="edit-ancestors">Fields of ancestor-terms to this term are:</label><br />';
+      $output .= $ancestor_output;
+      $output .= '<div class="form-item"><label class="option"><input type="checkbox" name="ancestors" id="edit-ancestors" value="1" class="form-checkbox"';
+      if($result){
+        $output .= ' checked="checked" ';
+      }
+      $output .= ' /> Display ancestor-fields</label></div>';
+      $output .= '</text>';
+      echo $output;
+      break;
+      
+    default:
+      break;
+  }
+}
+
+/**
+ * Menu callback; lists all terms and fields used by taxonomy_fields.
+ */
+function _taxonomy_fields_list(){
+	//TODO: display term with only inherited fields
+	//needs call because content.module could have changed database storage
+	taxonomy_fields_clear_terms_cache();
+	
+	//output of all existing term-field-relations
+	//$query=db_query("SELECT SUBSTRING(nfi.type_name,14) AS tid, tfa.ancestors, tf.universal, td.name, nfi.field_name, nfi.type_name, nfi.label, nfi.widget_type, nfi.weight, nf.type 
+	$query = db_query("SELECT SUBSTRING(nfi.type_name,14) AS tid, tf.universal, tfa.ancestors, td.vid, td.name, td.weight AS t_weight, th.parent, nfi.field_name, nfi.type_name, nfi.label, nfi.widget_type, nfi.weight, nf.type
+	FROM {node_field_instance} nfi 
+		LEFT JOIN {taxonomy_fields} tf ON nfi.field_name = tf.field_name AND SUBSTRING(nfi.type_name,14) = tf.tid 
+		LEFT JOIN {taxonomy_fields_ancestors} tfa ON SUBSTRING(nfi.type_name,14) = tfa.tid
+		LEFT JOIN {term_data} td ON SUBSTRING(nfi.type_name,14) = td.tid
+		LEFT JOIN {term_hierarchy} th ON SUBSTRING(nfi.type_name,14) = th.tid 
+		LEFT JOIN {node_field} nf ON nf.field_name = nfi.field_name
+		LEFT JOIN {variable} v ON td.vid = SUBSTRING(v.name,16)
+		WHERE nfi.type_name LIKE 'term_related_%%' AND v.name LIKE 'tax_fields_voc_%%' AND v.value = 's:1:\"1\";' AND ((tf.delta IS NULL OR tf.delta = 0 ) OR (tf.delta = 1 AND tf.delta != 0))		
+		ORDER BY td.vid, t_weight, td.name, nfi.weight");
+	//ORDER BY td.name, nfi.weight");
+	$output .= '<h3>Fields assigned to terms:</h3><br />';	
+	
+	$field_output = array();
+	while($field_list = db_fetch_object($query)){
+
+		//check if term is still existing and delete fields if not
+		if(!$field_list->name){
+			db_query('DELETE FROM {taxonomy_fields_ancestors} WHERE tid=%d',$field_list->tid);
+			taxonomy_fields_field_instance_delete(array('tid'=>$field_list->tid,'field_name'=>$field_list->field_name));
+		}
+		else{
+
+			if($field_list->ancestors){
+				$field_output[$field_list->tid]['ancestors']=TRUE;
+			}
+			$field_output[$field_list->tid]['rows'][$field_list->field_name]=array($field_list->label,$field_list->field_name,$field_list->type,$field_list->widget_type,$field_list->weight);
+			if($field_list->universal){
+				$field_output[$field_list->tid]['rows'][$field_list->field_name][]=t('universal field');
+			}
+			else {
+				$field_output[$field_list->tid]['rows'][$field_list->field_name][]=t('');
+			}
+			$field_output[$field_list->tid]['rows'][$field_list->field_name][]=l(t('edit'), 'admin/content/taxonomy_fields/'.ltrim(strrchr($field_list->type_name,'_'),'_').'/fields/'.$field_list->field_name);
+			$field_output[$field_list->tid]['rows'][$field_list->field_name][]=l(t('remove'), 'admin/content/taxonomy_fields/'.ltrim(strrchr($field_list->type_name,'_'),'_').'/fields/'.$field_list->field_name.'/remove');
+			$field_output[$field_list->tid]['name']=$field_list->name;
+			$field_output[$field_list->tid]['vid'] = $field_list->vid;
+			$field_output[$field_list->tid]['weight'] = $field_list->t_weight;
+			$field_output[$field_list->tid]['parent'] = $field_list->parent;
+		}
+	}
+	if($field_output){
+	   foreach($field_output as $tid => $field){
+        if(!empty($field['parent']) && empty($field_output[$field['parent']])){   
+           $parents = module_invoke('taxonomy', 'get_parents_all', $tid);
+            
+            foreach($parents as $key => $value){
+              if($value->tid != $tid && empty($field_output[$value->tid])){
+                $field_output[$value->tid] = array('vid' => $value->vid, 'name' => $value->name, 'rows' => array());
+                if(!empty($parents[$key + 1])){
+                  $field_output[$value->tid]['parent'] = $parents[$key + 1]->tid;
+                }
+              }
+            }
+        }
+      }
+	  $output.=theme('taxonomy_fields_list_output',$field_output);
+	}
+	else{
+		$output.='No fields are assigned to terms.';
+	}
+	return $output;
+}
+
+/**
+ * Menu callback; presents the form to alter vocabulary and term settings.
+ */
+function _taxonomy_fields_manage_taxonomy_form(){
+
+    drupal_add_css(drupal_get_path('module', 'taxonomy_fields'). '/taxonomy_fields.css');
+	drupal_add_js(drupal_get_path('module', 'taxonomy_fields') .'/taxonomy_fields.js');
+	$vocabulary = module_invoke('taxonomy','get_vocabularies');
+
+    $voc_ops = array(0 => 'Select vocabulary ');
+    foreach ($vocabulary as $vid => $voc){
+      if(variable_get('tax_fields_voc_'.$vid, 0)){
+         $voc_ops[$vid] = $voc->name;    
+      }
+    }
+    
+  	$form = array();
+  	
+  	$form['tax_fields'] = array(
+  	  '#type' => 'fieldset',
+  	  '#title' => t('Select a vocabulary and/or term to edit'),
+  	);
+  	
+  	$form['tax_fields']['loading'] = array(
+      '#type' => 'markup',
+      '#value' => ' ',
+      '#prefix' => '<div id="loading">',
+      '#suffix' => '</div>',
+    );
+  	
+  	$form['tax_fields']['voc_sel'] = array(
+      '#type' => 'select',
+      '#title' => 'Vocabulary',
+      '#options' => $voc_ops,
+  	  '#attributes' => array(
+  	    'onchange' => 'insert_terms()',
+  	    //'class' => 'form-taxonomy-fields'
+  	  ), 	  
+    );
+
+  	$form['tax_fields']['voc_enable'] = array(
+  	  '#type' => 'markup',
+  	  '#value' => ' ',
+  	  '#prefix' => '<div id="voc_enable">',
+  	  '#suffix' => '</div>',
+  	);  	
+  	$form['tax_fields']['terms'] = array(
+  	  '#type' => 'markup',
+  	  '#value' => ' ',
+  	  '#prefix' => '<div id="terms">',
+  	  '#suffix' => '</div>',
+  	);  	
+  	
+  	$form['tax_fields']['term_details'] = array(
+  	  '#type' => 'markup',
+  	  '#value' => ' ',
+  	  '#prefix' => '<div id="term_details">',
+  	  '#suffix' => '</div>',
+  	);
+
+  	$form['tax_fields']['button'] = array(
+      '#type' => 'submit',
+      '#value' => t('Submit'),
+    );
+    return $form;
+
+}
+
+function _taxonomy_fields_manage_taxonomy_form_submit($form_id, $form_values){
+	$vid = $form_values['voc_sel'];
+	$voc_enable = $form_values['voc_enable'];
+	if($vid){
+	  variable_set('tax_fields_voc_'.$vid, $voc_enable);
+	  $voc = module_invoke('taxonomy', 'get_vocabulary', $vid);
+	  drupal_set_message(t('Updated vocabulary %voc_name', array('%voc_name' => $voc->name)));
+	}
+	if($_POST['sel_term'] != '0' && $_POST['sel_term'] != 'select' && !empty($_POST['sel_term'])){
+	  $tid = $_POST['sel_term'];
+	  $term = module_invoke('taxonomy', 'get_term', $tid);
+	  if($_POST['ancestors']){
+	    db_query("DELETE FROM {taxonomy_fields_ancestors} WHERE tid = %d", $tid);
+        db_query("INSERT INTO {taxonomy_fields_ancestors} SET ancestors = %d, tid = %d", 1, $tid);
+	  }
+	  else{
+	    db_query("DELETE FROM {taxonomy_fields_ancestors} WHERE tid = %d", $tid);
+	  }
+	  drupal_set_message(t('Updated term %term_name', array('%term_name' => $term->name)));
+	}
+}
+
+/**
+ * Menu callback; presents the form to alter ancestor fields setting.
+ */
+function _taxonomy_fields_term(){
+	$tid = arg(3);
+	$query = db_query('SELECT ancestors FROM {taxonomy_fields_ancestors} WHERE tid=%d',$tid);
+	$result = db_fetch_array($query);	
+	$ancestors = taxonomy_fields_get_ancestor_fields($tid);
+	
+	//ancestors of $tid and their fields
+	$ancestor_output = '';
+	if(empty($ancestors)){
+		$ancestor_output.='none';
+	}
+	else{
+	  	foreach($ancestors as $ancestor){
+	  		$ancestor_output .= $ancestor['widget']['label'].' ('.$ancestor['field_name'].') assigned to '.$ancestor['term'].'<br />';
+	  	}
+	}
+	
+	$form = array();	
+	$form['ancestors'] = array(
+		'#type' => 'fieldset',
+		'#title' => t('Term ancestor fields setting'),
+		'#description' => t('<br />This setting applies to every node with taxonomy_fields carrying this term.<br /><br />Fields of ancestor-terms to this term are:<br /><br />!ancestor_output', array('!ancestor_output' => $ancestor_output)),
+	);
+	$form['ancestors']['ancestors'] = array(
+		'#type' => 'checkbox',
+		'#title' => t('Display ancestor-fields'),
+		'#default_value' => $result ? $result['ancestors'] : 0,
+		'#description' => t('All fields of ancestor-terms will be displayed for this term.'),
+	);
+	$form['tid'] = array(
+	    '#type' => 'value',
+	    '#value' => arg(3),
+	);	
+	$form['submit'] = array(
+	    '#type' => 'submit',
+	    '#value' => t('Save term settings'),
+	);	
+	return $form;
+}
+
+function _taxonomy_fields_term_submit($form_id, $form_values){
+	db_query("DELETE FROM {taxonomy_fields_ancestors} WHERE tid = %d", $form_values['tid']);
+	db_query("INSERT INTO {taxonomy_fields_ancestors} SET ancestors = %d, tid = %d", $form_values['ancestors'], $form_values['tid']);
+	drupal_set_message(t('The term was updated.'));
+}
+
+/**
+ * Menu callback; presents the form for creating a new field.
+ */  
+function _taxonomy_fields_term_field_relation_add_new(){ 
+	
+  $form = array();   
+  $type = taxonomy_fields_terms();
+  $field_types = _taxonomy_fields_field_types();
+  $fields = taxonomy_fields_fields();
+  $widget_types = taxonomy_fields_widget_types();
+  
+  $vocabulary = module_invoke('taxonomy','get_vocabularies');
+
+  foreach ($vocabulary as $vid => $voc){
+  	if(!variable_get('tax_fields_voc_'.$vid,0)){
+  	  unset($vocabulary[$vid]);
+  	}
+  }
+  	
+  if(empty($vocabulary)){
+	form_set_error('no vocabulary',t('No vocabulary existing or activated. You need to create vocabulary and/or activate it for taxonomy fields to assign fields.'));
+  }
+	  
+    // forms for new fields	  
+  $field_type_options = array();
+  foreach ($field_types as $field_name => $field_type) {
+    foreach ($widget_types as $widget_name => $widget_type) {
+      if (in_array($field_name, $widget_type['field types'])) {
+        $field_type_options[$field_name .'-'. $widget_name] = $widget_type['label'];
+      }
+    }
+  }
+  if (count($field_type_options) > 0) {
+    $output .= drupal_get_form('_taxonomy_fields_term_field_relation_add_new_form', $vocabulary, $field_type_options);
+  }
+  else {
+    form_set_error('no field module',t('No field modules are enabled. You need to <a href="!modules_url">enable one</a>, such as text.module, before you can add new fields.', array('!modules_url' => url('admin/build/modules'))));
+  }
+  
+  return $output;
+}
+
+function _taxonomy_fields_term_field_relation_add_new_form($vocabulary,$field_type_options){
+	
+	$form = array();
+    
+    $form['voc'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Select vocabulary to create and assign a new field'),
+    );
+    foreach ($vocabulary as $voc){
+    	$vid=$voc->vid;
+	 	$form['voc']['term'][$vid]=module_invoke('taxonomy','form',$vid);
+	 	
+	 	if($form['voc']['term'][$vid]['#options'][0] != '<none>'){
+	 		array_unshift($form['voc']['term'][$vid]['#options'],'<none>');
+	 		$form['voc']['term'][$vid]['#default_value']=0;
+	 		if($form['voc']['term'][$vid]['#multiple']){
+	 			$form['voc']['term'][$vid]['#size']++;
+	 		}
+	 	}
+    }
+    
+    $form['voc']['new'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Create new field'),
+    );
+    $form['voc']['new']['widget']['label'] = array(
+      '#title' => t('Label'),
+      '#type' => 'textfield',
+      '#default_value' => '',
+      '#description' => t('The human-readable name of this field.'),
+      '#required' => TRUE,
+    );
+    $form['voc']['new']['field_widget_type'] = array(
+      '#type' => 'radios',
+      '#title' => t('Field type'),
+      '#required' => TRUE,
+      '#options' => $field_type_options,
+      '#theme' => 'taxonomy_fields_field_add_new_field_widget_type',
+    );
+    $form['voc']['new']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Create field'),
+    );   
+    return $form;
+}
+
+function _taxonomy_fields_term_field_relation_add_new_form_validate($form_id, $form_values) {
+  	$term_selected = FALSE; 	
+	foreach ($form_values as $key => $value){
+		if (is_numeric($key)){
+			if (is_array($form_values[$key])){
+				foreach ($form_values[$key] as $key2 => $value2){
+					if($value2){
+						$term_selected=TRUE;
+					}
+				}
+			}
+			else{
+				if($value){
+					$term_selected=TRUE;
+				}
+			}
+		}
+	}
+	
+	if(!$term_selected){
+		form_set_error('no term select',t('No terms were selected. You need to select at least one term to add new fields.'));
+	}
+}
+
+function _taxonomy_fields_term_field_relation_add_new_form_submit($form_id, $form_values) {
+  // Find a valid, computer-friendly field name.
+
+  $fields = taxonomy_fields_fields();
+
+  $field_name = trim($form_values['label']);
+  $field_name = drupal_strtolower($field_name);
+  $field_name = str_replace(array(' ', '-'), '_', $field_name);
+  $field_name = preg_replace('/[^a-z0-9_]/', '', $field_name);
+  $field_name = 'field_'. $field_name;
+  $field_name = substr($field_name, 0, 31);
+  if (isset($fields[$field_name])) {
+    $counter = 0;
+    do {
+      $new_name = substr($field_name, 0, 29) .'_'. $counter++;
+    } while (isset($fields[$new_name]));
+    $field_name = $new_name;
+  }
+	
+  $widget_type = explode('-',$form_values['field_widget_type']);
+  $terms = array();
+  foreach ($form_values as $key => $value){
+		if (is_numeric($key)){
+			if (is_array($form_values[$key])){
+				foreach ($form_values[$key] as $key2 => $value2){
+					if($value2){						
+						$terms[] = $value2;
+						_taxonomy_fields_create_term_table($value2);
+						db_query("INSERT INTO {node_field_instance} (field_name, type_name, weight, label, widget_type, widget_settings, description) VALUES ('%s', '%s', %d, '%s', '%s', '%s', '%s')", $field_name, 'term_related_'.$value2, 0, $form_values['label'], $widget_type[1], serialize(array()), '');						
+					}
+				}
+			}
+			else{
+				if($value){
+					$terms[] = $value;
+					_taxonomy_fields_create_term_table($value);
+					db_query("INSERT INTO {node_field_instance} (field_name, type_name, weight, label, widget_type, widget_settings, description) VALUES ('%s', '%s', %d, '%s', '%s', '%s', '%s')", $field_name, 'term_related_'.$value, 0, $form_values['label'], $widget_type[1], serialize(array()), '');				
+				}
+			}
+		}
+	} 
+	if(empty($terms)){
+		return 'admin/content/taxonomy_fields/add_new';
+	}
+	
+	if(count($terms)>1){
+		$db_storage = CONTENT_DB_STORAGE_PER_FIELD;
+	}
+	else{
+		$db_storage = CONTENT_DB_STORAGE_PER_CONTENT_TYPE;
+	}
+  
+  $field_widget_type = explode('-', $form_values['field_widget_type']);
+  db_query("INSERT INTO {node_field} (field_name, type, global_settings, required, multiple, db_storage) VALUES ('%s', '%s', '%s', %d, %d, %d)", $field_name, $field_widget_type[0], serialize(array()), 0, 0, $db_storage);
+
+  taxonomy_fields_clear_terms_cache();
+  
+  // Create new database columns as necessary.
+  $field_types = _taxonomy_fields_field_types();
+  $field_type = $field_types[$field_widget_type[0]];
+  $field = taxonomy_fields_fields($field_name);
+
+  $columns = module_invoke($field_type['module'], 'field_settings', 'database columns', $field);
+  if (is_array($columns) && count($columns)) {
+  	content_alter_db_field(array(), array(), $field, $columns);
+  }
+
+  drupal_set_message(t('Created field %label.', array('%label' =>  $form_values['label'])));
+  return 'admin/content/taxonomy_fields/'.$terms[0].'/fields/'.$field_name;
+}
+
+/**
+ * Menu callback; presents the form for assigning an existing field.
+ */
+function _taxonomy_fields_term_field_relation_add_existing(){
+    
+    $fields = taxonomy_fields_fields();
+	$vocabulary = module_invoke('taxonomy','get_vocabularies');
+	
+	foreach ($vocabulary as $vid => $voc){
+  	  if(!variable_get('tax_fields_voc_'.$vid,0)){
+  	  	unset($vocabulary[$vid]);
+  	  }
+  	}
+  	
+	if(empty($vocabulary)){
+	  form_set_error('no vocabulary',t('No vocabulary existing or activated. You need to create vocabulary and/or activate it for taxonomy fields to assign fields.'));
+	}
+	
+    // list all existing fields
+    $options = array();
+    foreach ($fields as $field) {
+      $options[$field['field_name']] = t($field['widget']['label']) .' ('. $field['field_name'] .')';
+    }
+    
+    //select forms for existing fields	
+	if ($options) {
+	  $output .= drupal_get_form('_taxonomy_fields_term_field_relation_add_existing_form',$vocabulary,$options); 
+	}
+   	else{
+      form_set_error('no fields',t('No fields existing. You need to create fields to assign them to categories.'));
+   	}
+
+    return $output;
+}
+
+function _taxonomy_fields_term_field_relation_add_existing_form($vocabulary,$options){
+	
+	$form = array();
+   	$form['voc'] = array(
+      	'#type' => 'fieldset',
+      	'#title' => t('Select vocabulary to assign an existing field'),
+    );
+    foreach ($vocabulary as $voc){
+    	$vid = $voc->vid;
+	 	$form['voc']['term'][$vid]=module_invoke('taxonomy','form',$vid);
+	 	
+	 	if($form['voc']['term'][$vid]['#options'][0] != '<none>'){
+	 		array_unshift($form['voc']['term'][$vid]['#options'],'<none>');
+	 		$form['voc']['term'][$vid]['#default_value']=0;
+	 		if($form['voc']['term'][$vid]['#multiple']){
+	 			$form['voc']['term'][$vid]['#size']++;
+	 		}
+	 	}
+    }
+    	   	
+    $form['voc']['existing'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Assign to existing field'),
+    );
+    
+    $form['voc']['existing']['field_name'] = array(
+      '#type' => 'select',
+      '#required' => TRUE,
+      '#options' => $options,
+    );
+    
+    $form['voc']['existing']['submit'] = array(
+      '#type' => 'submit',
+      '#value' => t('Add field'),
+    );   
+    return $form; 
+
+}
+
+function _taxonomy_fields_term_field_relation_add_existing_form_validate($form_id, $form_values){
+	
+	$term_selected = FALSE;
+	$relation_double_up = FALSE;
+	$terms=taxonomy_fields_terms();
+	
+	foreach ($form_values as $key => $value){
+		if (is_numeric($key)){
+			if (is_array($form_values[$key])){
+				//term from multiple select vocabulary
+				foreach ($form_values[$key] as $value2){
+					if($value2){
+						$term_selected = TRUE;
+					}
+					if(!empty($terms['term_related_'.$value2]['fields'][$form_values['field_name']])){
+						$relation_double_up = TRUE;
+					}
+				}
+			}
+			elseif ($value){
+				//term from single select vocabulary
+				$term_selected = TRUE;
+				if(!empty($terms['term_related_'.$value]['fields'][$form_values['field_name']])){
+					$relation_double_up = TRUE;
+				}
+			}
+		}
+	}
+	if(!$term_selected){
+		form_set_error('no term select',t('No terms were selected. You need to select at least one term to add new fields.'));
+	}
+	if($relation_double_up){
+		drupal_set_message(t('This field is already assigned to some of the selected terms!'));
+	}
+}
+
+function _taxonomy_fields_term_field_relation_add_existing_form_submit($form_id, $form_values){
+	$change = FALSE;
+	$terms = taxonomy_fields_terms();
+	$prior_instance = db_fetch_array(db_query("SELECT weight, label, widget_type, widget_settings, description FROM {node_field_instance} WHERE field_name = '%s'", $form_values['field_name']));
+	if (!$prior_instance) {
+	    $prior_instance = array();
+	    $prior_instance['weight'] = 0;
+	    $prior_instance['label'] = $form_values['field_name'];
+	    $prior_instance['widget_type'] = '';
+	    $prior_instance['widget_settings'] = '';
+	    $prior_instance['description'] = '';
+	}
+	  
+	foreach ($form_values as $key => $value){
+		if (is_numeric($key)){
+			if (is_array($form_values[$key])){
+				//term from multiple select vocabulary
+				foreach ($form_values[$key] as $value2){
+					if($value2 && empty($terms['term_related_'.$value2]['fields'][$form_values['field_name']])){
+						$change = TRUE;
+						_taxonomy_fields_create_term_table($value2);
+						db_query("INSERT INTO {node_field_instance} (field_name, type_name, weight, label, widget_type, widget_settings, description) VALUES ('%s', '%s', %d, '%s', '%s', '%s', '%s')", $form_values['field_name'], 'term_related_'.$value2, $prior_instance['weight'], $prior_instance['label'], $prior_instance['widget_type'], $prior_instance['widget_settings'], $prior_instance['description']);		
+					}
+				}
+			}
+			elseif ($value && empty($terms['term_related_'.$value]['fields'][$form_values['field_name']])){
+				//term from single select vocabulary
+				$change = TRUE;
+				_taxonomy_fields_create_term_table($value);
+				db_query("INSERT INTO {node_field_instance} (field_name, type_name, weight, label, widget_type, widget_settings, description) VALUES ('%s', '%s', %d, '%s', '%s', '%s', '%s')", $form_values['field_name'], 'term_related_'.$value, $prior_instance['weight'], $prior_instance['label'], $prior_instance['widget_type'], $prior_instance['widget_settings'], $prior_instance['description']);			
+			}
+		}
+	}
+	if($change){
+		$field = taxonomy_fields_fields($form_values['field_name']);
+	  	$field_types = _taxonomy_fields_field_types();
+	  	$field_type = $field_types[$field['type']];
+		$columns = module_invoke($field_type['module'], 'field_settings', 'database columns', $field);
+	
+		if (is_array($columns) && count($columns)) {
+			if ($field['db_storage'] == CONTENT_DB_STORAGE_PER_CONTENT_TYPE) {
+				$new_field = $field;
+				$new_field['db_storage'] = CONTENT_DB_STORAGE_PER_FIELD;
+				db_query("UPDATE {node_field} SET db_storage = %d WHERE field_name = '%s'", CONTENT_DB_STORAGE_PER_FIELD, $form_values['field_name']);
+				content_alter_db_field($field, $columns, $new_field, $columns);
+			}
+		}	
+	 	taxonomy_fields_clear_terms_cache();
+		return 'admin/content/taxonomy_fields';
+	}
+	else{
+		return 'admin/content/taxonomy_fields/add_existing';
+	}			
+}
+
+/**
+ * Creates a table 'content_type_related_[$tid]' if not existing
+ */
+function _taxonomy_fields_create_term_table($tid){
+	if(!db_table_exists('content_type_term_related_'.$tid)){
+		switch ($GLOBALS['db_type']) {
+          case 'mysql':
+          case 'mysqli':
+            db_query("CREATE TABLE {content_type_term_related_$tid } (
+                vid int unsigned NOT NULL default '0',
+                nid int unsigned NOT NULL default '0',
+                PRIMARY KEY (vid)
+              ) /*!40100 DEFAULT CHARACTER SET utf8 */;");
+            break;
+
+          case 'pgsql':
+            db_query("CREATE TABLE {content_type_term_related_$tid } (
+                vid integer NOT NULL default '0' CHECK(vid >= 0),
+                nid integer NOT NULL default '0' CHECK(nid >= 0),
+                PRIMARY KEY (vid)
+              )");
+            break;
+        }
+	}
+}
+
+/**
+ *  Implementation of hook_form_alter().
+ */
+function taxonomy_fields_form_alter($form_id, &$form) {
+   
+  switch ($form_id) {
+    case 'node_type_form':
+    	
+      //check if taxonomy_fields are enabled for this content_type
+  	  $enabled = variable_get('taxonomy_fields_'.$form['#node_type']->type, 0);
+  	  
+      $form['workflow']['taxonomy_fields'] = array(
+        '#type' => 'radios',
+        '#title' => t('Taxonomy fields'),
+        '#default_value' => $enabled,
+        '#options' => array(0 => t('Disabled'), 1 => t('Enabled')),
+        '#description' => t('Should this content type contain fields attached by terms?'),
+      );
+      break;
+
+    case $form['type']['#value'].'_node_form':      
+      if(variable_get('taxonomy_fields_'.$form['type']['#value'],0) && !$form['#node']->cck_dummy_node_form){
+        
+    	  drupal_add_js(drupal_get_path('module', 'taxonomy_fields') .'/taxonomy_fields.js');   	  
+    	  drupal_add_css(drupal_get_path('module', 'taxonomy_fields'). '/taxonomy_fields.css');
+    	  
+  	      $form['taxonomy_fields_dynamic'] = array(
+            '#type' => 'markup',
+            '#value' => ' ',
+            '#prefix' => '<div id="taxonomy_fields_dynamic">',
+            '#suffix' => '</div>',
+            '#weight' => variable_get('tax_dynamic_fields_loading', 0),
+          );
+           //javascript for taxonomy 
+    	  if(is_array($form['taxonomy'])){   	   
+        	  foreach ($form['taxonomy'] as $key => $value){
+        	    if(is_numeric($key) && variable_get('tax_fields_voc_'.$key,0)){
+                  if(empty($form['#node']->nid)){
+                    $form['taxonomy'][$key]['#attributes']['onchange'] =  'insert_field_forms('.$key.',0,"'.$form['#node']->type.'");';                   
+                  }
+                  else{
+        	        $form['taxonomy'][$key]['#attributes']['onchange'] =  'insert_field_forms('.$key.','.$form['#node']->nid.','.$form['#node']->vid.');';
+                  }
+                  /*
+        	      if($form['taxonomy'][$key]['#multiple']){       	        
+                    $form['taxonomy'][$key]['#attributes']['class'] = $form['taxonomy'][$key]['#attributes']['class'].' form-taxonomy-fields-multiple';        	      }
+        	      else{
+        	        $form['taxonomy'][$key]['#attributes']['class'] = $form['taxonomy'][$key]['#attributes']['class'].' form-taxonomy-fields-vocabulary';       	        
+        	      }
+                  */
+        	    }
+        	  }
+    	  }
+    	  //javascript for content taxonomy fields
+          foreach ($form as $key => $value){
+            if(is_array($value)){
+              if(substr($key, 0, 6) == 'field_'){              
+                if($value['tids']['#type'] == 'radios'){
+                  $term = module_invoke('taxonomy','get_term',array_rand($value['tids']['#options']));
+                  if(variable_get('tax_fields_voc_'.$term->vid,0)){   
+                    if(empty($form['#node']->nid)){
+                      $form[$key]['tids']['#attributes']['onclick'] =  'insert_field_forms_radio('.$term->vid.',0,"'.$form['#node']->type.'",this.value);';                   
+                    }
+                    else{
+                      $form[$key]['tids']['#attributes']['onclick'] =  'insert_field_forms_radio('.$term->vid.','.$form['#node']->nid.','.$form['#node']->vid.',this.value);';
+                    }
+                  }
+                }
+                if($value['tids']['#type'] == 'checkboxes'){
+                  $term = module_invoke('taxonomy','get_term',array_rand($value['tids']['#options']));
+                  if(variable_get('tax_fields_voc_'.$term->vid,0)){ 
+                    if(empty($form['#node']->nid)){
+                      $form[$key]['tids']['#attributes']['onclick'] =  'insert_field_forms_checkboxes('.$term->vid.',0,"'.$form['#node']->type.'",this.value,this.checked);';                   
+                    }
+                    else{
+                      $form[$key]['tids']['#attributes']['onclick'] =  'insert_field_forms_checkboxes('.$term->vid.','.$form['#node']->nid.','.$form['#node']->vid.',this.value,this.checked);';
+                    }
+                  }
+                }
+              }
+              
+              elseif(substr($key, 0, 6) == 'group_'){
+                foreach($value as $field_name => $field){
+
+                  if(substr($field_name, 0, 6) == 'field_' && $field['tids']['#type'] == 'radios'){
+                    $term = module_invoke('taxonomy', 'get_term', array_rand($field['tids']['#options']));
+                    if(variable_get('tax_fields_voc_'.$term->vid,0)){
+                      if(empty($form['#node']->nid)){
+                        $form[$key][$field_name]['tids']['#attributes']['onclick'] =  'insert_field_forms_radio('.$term->vid.',0,"'.$form['#node']->type.'",this.value);';                   
+                      }
+                      else{
+                        $form[$key][$field_name]['tids']['#attributes']['onclick'] =  'insert_field_forms_radio('.$term->vid.','.$form['#node']->nid.','.$form['#node']->vid.',this.value);';
+                      }
+                    }
+                  }
+                  
+                  if(substr($field_name, 0, 6) == 'field_' && $field['tids']['#type'] == 'checkboxes'){               
+                    $term = module_invoke('taxonomy','get_term',array_rand($field['tids']['#options']));
+                    if(variable_get('tax_fields_voc_'.$term->vid,0)){
+                      if(empty($form['#node']->nid)){
+                        $form[$key][$field_name]['tids']['#attributes']['onclick'] =  'insert_field_forms_checkboxes('.$term->vid.',0,"'.$form['#node']->type.'",this.value,this.checked);';                   
+                      }
+                      else{
+                        $form[$key][$field_name]['tids']['#attributes']['onclick'] =  'insert_field_forms_checkboxes('.$term->vid.','.$form['#node']->nid.','.$form['#node']->vid.',this.value,this.checked);';
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+          $node = $form['#node'];
+		  $in_node = module_invoke('content','types',$node->type);
+		  if(empty($node->nid)){
+		    variable_del('tax_dynamic_fields_0');  
+		  }
+		  else{
+	        variable_del('tax_dynamic_fields_'.$node->nid);
+		  }
+	      $return = array();
+	      $on_groups = array();
+    	  $widget_types = taxonomy_fields_widget_types();		
+    	  $fields = taxonomy_fields_get_node_info($node);
+
+          $query = db_query("SELECT nfi.field_name, nfi.weight, td.tid FROM {node_field_instance} nfi
+                LEFT JOIN {term_data} td ON SUBSTRING(nfi.type_name,14) = td.tid  
+                LEFT JOIN {variable} v ON td.vid = SUBSTRING(v.name,16)
+                WHERE nfi.type_name LIKE 'term_related_%%' AND v.name LIKE 'tax_fields_voc_%%' AND v.value = 's:1:\"1\";' 
+                GROUP BY nfi.field_name");
+          
+          while($all_fields = db_fetch_object($query)){
+            $all_field = taxonomy_fields_fields($all_fields->field_name, $all_fields->tid);       
+            if(!isset($in_node['fields'][$all_field['field_name']]) && !$all_field['universal']){
+              $result[$all_field['field_name']]['#type'] = 'markup';
+              $result[$all_field['field_name']]['#value'] = ' ';
+              $result[$all_field['field_name']]['#weight'] = $all_fields->weight;
+              $result[$all_field['field_name']]['#prefix'] = '<div id="tax_'.$all_field['field_name'].'" class="taxonomy-field">';
+              $result[$all_field['field_name']]['#suffix'] = '</div>';                                   
+              $return = array_merge($return, $result);          
+            } 
+          }
+          foreach ($fields as $tid => $field_term){	      		
+			  	if($field_term['ancestors']){
+			  		$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+			  	}	
+	      		if($field_term['fields']){	      	
+					foreach ($field_term['fields'] as $field) {
+					  	
+						//don't add already existing fields
+						//if field_value is set universal then there's no edit widget
+					  	if(!isset($in_node['fields'][$field['field_name']]) && !$field['universal']){
+					  		
+						  if(!empty($field['group']) && !in_array($field['group'], $on_groups)){
+						    $on_groups[] = $field['group'];
+						  }
+					  	  $form['#attributes'] = array("enctype" => "multipart/form-data");
+							$node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();							
+						    $module = $widget_types[$field['widget']['type']]['module'];
+						    $function = $module .'_widget';
+						    
+						    if (function_exists($function)) {						    	
+						    	// If the field is used for he first time with this node, pre-fill with default values
+						        $db_info = module_invoke('content','database_info',$field);
+								$table = $db_info['table'];
+						        $default_value_query = db_query('SELECT * FROM {'.$table.'} WHERE nid=%d', $node->nid);
+						        $default_value_result = db_fetch_array($default_value_query);
+						        
+						    	if (empty($default_value_result)) {
+						    	  //not sure
+						        	$node_field = array_merge($node_field, module_invoke('content','default_value',$node, $field, $node_field));
+					            }
+						    	$function('prepare form values', $node, $field, $node_field);
+						    	
+						    	if (isset($node->$field['field_name']) || count($node_field)) {
+							      	$node->$field['field_name'] = $node_field;
+							    }						    	
+								$result = $function('form', $node, $field, $node_field);								
+								if (is_array($result)) {
+									$result[$field['field_name']]['#weight'] = $field['widget']['weight'];
+									$result[$field['field_name']]['#prefix'] = '<div id="tax_'.$field['field_name'].'" class="taxonomy-field">'.$result[$field['field_name']]['#prefix'];
+                                    $result[$field['field_name']]['#suffix'] = $result[$field['field_name']]['#suffix'].'</div>';									
+									$return[$field['field_name']] = $result[$field['field_name']];
+								}
+								else if (isset($result)) {
+									$return[$field['field_name']] = $result;
+								}
+								$in_node['fields'][$field['field_name']] = $field;
+						    }	
+						    if (is_object($node) && (isset($node->$field['field_name']) || count($node_field))) {
+						      	$node->$field['field_name'] = $node_field;
+						    }
+					
+						}
+					}
+	      		}
+	      	}
+        $form = array_merge($form, $return);  	      	
+      	//fieldgroups
+      	if(module_exists('fieldgroup')){
+      	  $query = db_query('SELECT nfi.*, ngf.group_name FROM {node_group_fields} ngf 
+                          LEFT JOIN {node_field_instance} nfi ON nfi.field_name = ngf.field_name
+                          WHERE ngf.type_name = "taxonomy_fields" AND nfi.type_name LIKE "term_related_%%"');
+          while ($group = db_fetch_array($query)){         
+            if(empty($form[$group['group_name']])){
+              
+              $form[$group['group_name']] = array(
+                '#type' => 'fieldset',
+                '#title' => t(str_replace('group_', '', $group['group_name'])),
+                '#collapsed' => FALSE,
+                '#collapsible' => TRUE,
+                '#weight' => 0,
+                '#attributes' => array('class' => strtr($group['group_name'], '_', '-')),
+              );              
+              if(variable_get('tax_dynamic_fields_hide', 0)){
+                if(in_array($group['group_name'], $on_groups)){
+                  $form[$group['group_name']]['#prefix'] = '<div id = "tax_'.$group['group_name'].'">';                  
+                }
+                else{
+                  $form[$group['group_name']]['#prefix'] = '<div id = "tax_'.$group['group_name'].'" class = "taxonomy-fields-hidden">';               
+                }
+                $form[$group['group_name']]['#suffix'] = '</div>';               
+              }
+            }            
+            if (isset($form[$group['field_name']])) {
+              $form[$group['group_name']][$group['field_name']] = $form[$group['field_name']];
+              unset($form[$group['field_name']]);
+            }
+          }
+          if(variable_get('tax_dynamic_fields_hide', 0)){
+            $groups = module_invoke('fieldgroup', 'groups', $form['type']['#value']);
+            if(!empty($groups)){
+              foreach($groups as $key => $value){
+                if(empty($value['fields'])){
+                  if(!in_array($key, $on_groups)){                
+                    $form[$key]['#prefix'] = '<div id = "tax_'.$key.'" class = "taxonomy-fields-hidden">'.$form[$key]['#prefix'];
+                  }
+                  else{
+                    $form[$key]['#prefix'] = '<div id = "tax_'.$key.'">'.$form[$key]['#prefix'];
+                  }
+                  $form[$key]['#suffix'] = $form[$key]['#suffix'].'</div>';            
+                }
+              }
+            }
+          }
+      	}
+      }
+      
+      if(variable_get('taxonomy_fields_'.$form['type']['#value'],0) && $form['#node']->cck_dummy_node_form){
+        $form['taxonomy_fields_dynamic'] = array(
+            '#type' => 'markup',
+            '#value' => ' ',
+            '#prefix' => '<div id="taxonomy_fields_dynamic">',
+            '#suffix' => '</div>',
+            '#weight' => variable_get('tax_dynamic_fields_loading', 0),
+        );
+      }
+      //drupal_set_message(serialize($form['group_rrr']));
+      break;
+     
+    case 'taxonomy_form_vocabulary':
+      
+      $enabled = variable_get('tax_fields_voc_'.$form['vid']['#value'],0);
+      
+      $form['submit']['#weight'] = 8;
+      if($form['delete']) {
+        $form['delete']['#weight'] = 8;
+      }
+      $form['taxonomy_fields'] = array(
+        '#type' => 'fieldset',
+        '#title' => t('Taxonomy fields'),
+        '#weight' => 5,
+      );      
+      $form['taxonomy_fields']['tax_fields'] = array(
+        '#type' => 'radios',
+        '#default_value' => $enabled,
+        '#options' => array(0 => t('Disabled'), 1 => t('Enabled')),
+        '#description' => t('Should this vocabulary carry fields?'),
+      );
+      break;
+  	}
+} 
+
+/**
+ *  AJAX callback; returns dynamic fields.
+ */
+function taxonomy_fields_get_fields_form(){
+  $nid = $_POST['nid'];
+  $vid = $_POST['vid'];
+  $tid = $_POST['tid'];
+  $voc = $_POST['voc'];
+
+  if ($vid) {
+    $node = db_fetch_object(db_query('SELECT n.nid, r.vid, n.type, n.status, n.created, n.changed, n.comment, n.promote, n.sticky, r.timestamp AS revision_timestamp, r.title, r.body, r.teaser, r.log, r.format, u.uid, u.name, u.picture, u.data FROM {node} n INNER JOIN {users} u ON u.uid = n.uid INNER JOIN {node_revisions} r ON r.nid = n.nid AND r.vid = %d WHERE n.nid=%d', $vid, $nid));
+  }
+  else if($nid != 0){
+    $node = db_fetch_object(db_query('SELECT n.nid, n.vid, n.type, n.status, n.created, n.changed, n.comment, n.promote, n.sticky, r.timestamp AS revision_timestamp, r.title, r.body, r.teaser, r.log, r.format, u.uid, u.name, u.picture, u.data FROM {node} n INNER JOIN {users} u ON u.uid = n.uid INNER JOIN {node_revisions} r ON r.vid = n.vid WHERE n.nid=%d', $nid));
+  }
+  else{
+    $node->nid = 0;
+    $node->type = $_POST['type'];
+  }
+
+  $prev_fields = array();
+  $del_fields = taxonomy_fields_get_delete_fields($node, $voc);
+  $field_array = variable_get('tax_dynamic_fields_'.$node->nid, 0);
+  $return = array();
+  $widget_types = taxonomy_fields_widget_types();
+  $fields = array();
+  $group_on = array();
+  $group_off = array();
+  $on_fields = array();
+ 
+  if(is_numeric($tid)){
+    $field_term = taxonomy_fields_terms($tid);           
+    if($field_term['ancestors']){
+      $fields = array_merge($fields, taxonomy_fields_get_ancestor_fields($tid));
+    }
+    if($field_term['fields']){
+      $fields = array_merge($fields, $field_term['fields']);
+    }
+  }
+  else{
+    $tids = split(',',$tid);
+    foreach($tids as $tid){
+      $field_term = module_invoke('taxonomy_fields','terms',$tid);           
+      if($field_term['ancestors']){
+        $fields = array_merge($fields, taxonomy_fields_get_ancestor_fields($tid));
+      }
+      if($field_term['fields']){
+        $fields = array_merge($fields, $field_term['fields']);
+      }
+    }
+  }
+      
+  if($fields){          
+      foreach ($fields as $field) {
+       
+        if($node->nid != 0){
+          $default_additions = array(); 
+          $universal = FALSE;
+          $op = 'load';
+          $query = db_query('SELECT tf.field_value, tf.universal,tf.delta FROM {taxonomy_fields} tf WHERE tf.field_name="%s" AND tf.tid=%d',$field['field_name'], ltrim(strrchr($field['type_name'],'_'),'_'));
+          $node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+              
+          while($result2 = db_fetch_object($query)){
+              if($result2->universal){                 
+                  $universal = TRUE;
+                  $node_field[$result2->delta] = unserialize($result2->field_value);
+              }
+          }                        
+          if(!$universal){
+              $default_additions = array_merge($default_additions, _taxonomy_fields_field_invoke_default($op, $node, $field, $teaser, $page));    
+              if ($default_additions) {
+                  foreach ($default_additions as $key => $value) {
+                      $node->$key = $value;
+                  }
+              }                           
+              $additions = _taxonomy_fields_field_invoke('load', $node, $field);                          
+              if ($additions) {
+                  foreach ($additions as $key => $value) {
+                      $default_additions[$key] = $value;
+                  }
+              }                           
+          }
+          else{
+              $default_additions[$field['field_name']] = $node_field;
+              $node->$field['field_name'] = $node_field;
+          }
+        }
+        //till here
+          //don't add already existing fields
+          //if field_value is set universal then there's no edit widget
+          
+          
+          if((empty($field_array[$field['field_name']]) || ($field_array[$field['field_name']]['in_type'] == false && empty($field_array[$field['field_name']]['tax']))) && !$field['universal']){
+              
+            if(in_array($field['field_name'],$del_fields) || $universal){
+              $del_fields = array_diff($del_fields, array($field['field_name']));
+            }
+            else{
+              
+              $form['#attributes'] = array("enctype" => "multipart/form-data");
+              $node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+              
+              $module = $widget_types[$field['widget']['type']]['module'];
+              $function = $module .'_widget';
+              
+              if (function_exists($function)) {
+                  
+                  // If the field is used for he first time with this node, pre-fill with default values
+                $db_info = module_invoke('content','database_info',$field);
+                  
+                $table = $db_info['table'];
+                  $default_value_query = db_query('SELECT * FROM {'.$table.'} WHERE nid=%d', $nid);
+                  $default_value_result = db_fetch_array($default_value_query);
+                  
+                  if (empty($default_value_result)) {
+                    //not sure
+                      $node_field = array_merge($node_field, module_invoke('content','default_value',$node, $field, $node_field));
+                      //$node_field = array(0 => array("value" => ""));
+                  }
+                  
+                  $function('prepare form values', $node, $field, $node_field);
+                  
+                  if (isset($node->$field['field_name']) || count($node_field)) {
+                      $node->$field['field_name'] = $node_field;
+                  }
+                  
+                  $result = $function('form', $node, $field, $node_field);
+                 
+
+                    if (is_array($result)) {
+                      $result[$field['field_name']]['#weight'] = $field['widget']['weight'];
+                      $result[$field['field_name']]['#prefix'] = '<pre_field><name>'.$field['field_name'].'</name>'.$result[$field['field_name']]['#prefix'];                  
+                      $result[$field['field_name']]['#suffix'] = $result[$field['field_name']]['#suffix'].'</pre_field>';
+                      $prev_fields = array_merge($prev_fields, $result);
+                    }
+                    else if (isset($result)) {
+                      $prev_fields[] = $result;
+                    }
+                    $field_array[$field['field_name']]['status'] = true;
+
+
+                  $in_node['fields'][$field['field_name']] = $field;
+              }
+
+              if (is_object($node) && (isset($node->$field['field_name']) || count($node_field))) {
+                  $node->$field['field_name'] = $node_field;
+              }
+              if($field['group']){             
+                $group_on[] = $field['group'];
+                if(empty($field_array[$field['group']])){
+                  $field_array[$field['group']] = array('in_type' => false); 
+                }
+                $field_array[$field['group']]['fields'][] = $field['field_name'];                         
+              }             
+            }                   
+          }
+          
+          if(empty($field_array[$field['field_name']])){
+            $field_array[$field['field_name']] = array('in_type' => false);
+          }
+          else{
+            $on_field[] = $field['field_name'];         
+          }
+          $field_array[$field['field_name']]['status'] = true;
+          $field_array[$field['field_name']]['tax'][$tid] = array('vid' => $voc, 'tid' => $tid);
+      }
+  }
+    
+  if(!empty($on_field) && is_array($on_field)){
+    foreach($on_field as $field){
+      $return[] = array(
+        '#value' => $field,
+        '#weight' => -14,     
+        '#prefix' => '<on_field>',
+        '#suffix' => '</on_field>',
+      );
+    }
+  }
+  if(!empty($group_on) && is_array($group_on) && (variable_get('tax_dynamic_fields_hide', 0) != 0)){
+    foreach($group_on as $group){
+      $return[] = array(
+        '#value' => $group,
+        '#weight' => -13,
+        '#prefix' => '<group_on>',
+        '#suffix' => '</group_on>',
+      );
+    }
+  }
+  
+  if(!empty($del_fields) && is_array($del_fields)){
+    foreach($del_fields as  $del){
+      $return[] = array(
+        '#value' => $del,
+        '#weight' => -12,
+        '#prefix' => '<del_field>',
+        '#suffix' => '</del_field>',
+      );
+      $field_array[$del]['status'] = false;
+      $field = taxonomy_fields_fields($del);
+      
+      if($field['group']){
+        if(is_array($field_array[$field['group']]['fields'])){
+          $field_array[$field['group']]['fields'] = array_diff($field_array[$field['group']]['fields'], array($field['field_name']));             
+        }
+        if(empty($field_array[$field['group']]['fields'])){
+          $group_off[] = $field['group'];
+        }
+      }    
+    }
+  }
+  
+  if(!empty($group_off) && is_array($group_off) && (variable_get('tax_dynamic_fields_hide', 0) != 0)){
+    foreach($group_off as $group){
+      $return[] = array(
+        '#value' => $group,
+        '#weight' => -11,     
+        '#prefix' => '<group_off>',
+        '#suffix' => '</group_off>',
+      );
+    }
+  }
+  
+  if(!empty($prev_fields) && is_array($prev_fields)){
+    foreach($prev_fields as $key => $prev){      
+      $return[$key] = $prev;
+    }
+  }
+  
+  variable_set('tax_dynamic_fields_'.$node->nid,$field_array);
+  return $return;
+}
+
+function taxonomy_fields_get_fields_form_checkbox(){
+  $nid = $_POST['nid'];
+  $vid = $_POST['vid'];
+  $tid = $_POST['tid'];
+  $voc = $_POST['voc'];
+  $checked = $_POST['checked'];
+  
+  if ($vid) {
+    $node = db_fetch_object(db_query('SELECT n.nid, r.vid, n.type, n.status, n.created, n.changed, n.comment, n.promote, n.sticky, r.timestamp AS revision_timestamp, r.title, r.body, r.teaser, r.log, r.format, u.uid, u.name, u.picture, u.data FROM {node} n INNER JOIN {users} u ON u.uid = n.uid INNER JOIN {node_revisions} r ON r.nid = n.nid AND r.vid = %d WHERE n.nid=%d', $vid, $nid));
+  }
+  else if($nid != 0){
+    $node = db_fetch_object(db_query('SELECT n.nid, n.vid, n.type, n.status, n.created, n.changed, n.comment, n.promote, n.sticky, r.timestamp AS revision_timestamp, r.title, r.body, r.teaser, r.log, r.format, u.uid, u.name, u.picture, u.data FROM {node} n INNER JOIN {users} u ON u.uid = n.uid INNER JOIN {node_revisions} r ON r.vid = n.vid WHERE n.nid=%d', $nid));
+  }
+  else{
+    $node->nid = 0;
+    $node->type = $_POST['type'];
+  }
+  
+  $del_fields = array();
+  $prev_fields = array();
+  $group_on = array();
+  $group_off = array();
+  $on_field = array();
+  
+  $field_array = variable_get('tax_dynamic_fields_'.$node->nid, 0);
+  if(empty($field_array)){
+    $field_array = taxonomy_fields_get_field_array($node);
+  }
+  if($checked == 'false'){  
+    foreach ($field_array as $field_name => $field){
+      if(is_array($field['tax'])){  
+        unset($field_array[$field_name]['tax'][$tid]);
+        if(empty($field_array[$field_name]['tax'])){
+          $del_fields[] = $field_name;
+          $field_array[$field_name]['status'] == false;
+        } 
+      }
+    }
+  }
+   
+  $return = array();
+  $widget_types = taxonomy_fields_widget_types();
+  $fields = array();
+  
+  $field_term = taxonomy_fields_terms($tid);           
+  if($field_term['ancestors']){
+    $fields = array_merge($fields, taxonomy_fields_get_ancestor_fields($tid));
+  }
+  if($field_term['fields']){
+    $fields = array_merge($fields, $field_term['fields']);
+  }
+  
+  if($fields){          
+      foreach ($fields as $field) {      
+        if($node->nid != 0){
+          $default_additions = array(); 
+          $universal = FALSE;
+          $op = 'load';
+          $query = db_query('SELECT tf.field_value, tf.universal,tf.delta FROM {taxonomy_fields} tf WHERE tf.field_name="%s" AND tf.tid=%d',$field['field_name'], ltrim(strrchr($field['type_name'],'_'),'_'));
+          $node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+              
+          while($result2 = db_fetch_object($query)){
+              if($result2->universal){                 
+                  $universal = TRUE;
+                  $node_field[$result2->delta] = unserialize($result2->field_value);
+              }
+          }                        
+          if(!$universal){
+              $default_additions = array_merge($default_additions, _taxonomy_fields_field_invoke_default($op, $node, $field, $teaser, $page));    
+              if ($default_additions) {
+                  foreach ($default_additions as $key => $value) {
+                      $node->$key = $value;
+                  }
+              }                           
+              $additions = _taxonomy_fields_field_invoke('load', $node, $field);                          
+              if ($additions) {
+                  foreach ($additions as $key => $value) {
+                      $default_additions[$key] = $value;
+                  }
+              }                           
+          }
+          else{
+              $default_additions[$field['field_name']] = $node_field;
+              $node->$field['field_name'] = $node_field;
+          }
+        }
+
+          //don't add already existing fields
+          //if field_value is set universal then there's no edit widget                   
+          if((empty($field_array[$field['field_name']]) || ($field_array[$field['field_name']]['in_type'] == false && empty($field_array[$field['field_name']]['tax']))) && !$field['universal']){
+              
+            if($universal){
+              $del_fields = array_diff($del_fields, array($field['field_name']));
+            }
+
+            if($checked == 'true' && empty($field_array[$field['field_name']])){
+              
+              $node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+              
+              $module = $widget_types[$field['widget']['type']]['module'];
+              $function = $module .'_widget';
+              
+              if (function_exists($function)) {
+                  
+                  // If the field is used for he first time with this node, pre-fill with default values
+                $db_info = module_invoke('content','database_info',$field);
+                  
+                $table = $db_info['table'];
+                  $default_value_query = db_query('SELECT * FROM {'.$table.'} WHERE nid=%d', $nid);
+                  $default_value_result = db_fetch_array($default_value_query);
+                  
+                  if (empty($default_value_result)) {
+                    //not sure
+                      $node_field = array_merge($node_field, module_invoke('content','default_value',$node, $field, $node_field));
+                      //$node_field = array(0 => array("value" => ""));
+                  }
+                  
+                  $function('prepare form values', $node, $field, $node_field);
+                  
+                  if (isset($node->$field['field_name']) || count($node_field)) {
+                      $node->$field['field_name'] = $node_field;
+                  }                 
+                  $result = $function('form', $node, $field, $node_field);
+                 
+                    if (is_array($result)) {
+                      unset($field['widget']['weight']);
+                      $result[$field['field_name']]['#prefix'] = '<pre_field><name>'.$field['field_name'].'</name>'.$result[$field['field_name']]['#prefix'];                  
+                      $result[$field['field_name']]['#suffix'] = $result[$field['field_name']]['#suffix'].'</pre_field>';
+                      
+                      //TODO javascript for content taxonomy fields
+                      $prev_fields = array_merge($prev_fields, $result);
+                    }
+                    else if (isset($result)) {
+                      $prev_fields[] = $result;
+                    }
+                    $field_array[$field['field_name']]['status'] = true;
+
+
+                  $in_node['fields'][$field['field_name']] = $field;
+              }
+
+              if (is_object($node) && (isset($node->$field['field_name']) || count($node_field))) {
+                  $node->$field['field_name'] = $node_field;
+              }
+            }                   
+          }
+          
+          if($checked == 'true'){
+            if(empty($field_array[$field['field_name']])){
+              $field_array[$field['field_name']] = array('in_type' => false);
+            }
+            else{
+              $on_field[] = $field['field_name'];
+            }
+            $field_array[$field['field_name']]['status'] = true;
+            $field_array[$field['field_name']]['tax'][$tid] = array('vid' => $voc, 'tid' => $tid);
+                        
+            if($field['group']){             
+              $group_on[] = $field['group'];
+              if(empty($field_array[$field['group']])){
+                $field_array[$field['group']] = array('in_type' => false); 
+              }
+              $field_array[$field['group']]['fields'][] = $field['field_name'];                         
+            }
+          }
+          
+      }
+  }
+  if(!empty($on_field) && is_array($on_field)){
+    foreach($on_field as $field){
+      $return[] = array(
+        '#value' => $field,
+        '#weight' => -14,     
+        '#prefix' => '<on_field>',
+        '#suffix' => '</on_field>',
+      );
+    }
+  }
+  if(!empty($group_on) && is_array($group_on) && (variable_get('tax_dynamic_fields_hide', 0) != 0)){
+    foreach($group_on as $group){
+      $return[] = array(
+        '#value' => $group,
+        '#weight' => -13,     
+        '#prefix' => '<group_on>',
+        '#suffix' => '</group_on>',
+      );
+    }
+  }
+  if(!empty($del_fields) && is_array($del_fields)){
+    foreach($del_fields as $del){
+      $return[] = array(
+        '#value' => $del,
+        '#weight' => -11,
+        '#prefix' => '<del_field>',
+        '#suffix' => '</del_field>',
+      );
+      $field_array[$del]['status'] = false;
+      $field = taxonomy_fields_fields($del, $tid);
+      if($field['group']){
+        if(is_array($field_array[$field['group']]['fields'])){
+          $field_array[$field['group']]['fields'] = array_diff($field_array[$field['group']]['fields'], array($field['field_name']));
+        }
+        if(empty($field_array[$field['group']]['fields']) && !$field_array[$field['group']]['in_type']){
+          $group_off[] = $field['group'];
+        }
+      }
+    }
+  }
+  
+  if(!empty($group_off) && is_array($group_off) && (variable_get('tax_dynamic_fields_hide', 0) != 0)){
+    foreach($group_off as $group){
+      $return[] = array(
+        '#value' => $group,
+        '#weight' => -12,
+        '#prefix' => '<group_off>',
+        '#suffix' => '</group_off>',
+      );
+    }
+  }
+
+  if(!empty($prev_fields) && is_array($prev_fields)){
+    foreach($prev_fields as $key => $prev){     
+      $return[$key] = $prev;
+    }
+  }
+  variable_set('tax_dynamic_fields_'.$node->nid, $field_array);
+  return $return;
+}
+
+/**
+ *  Returns dynamic fields to be deleted.
+ */
+function taxonomy_fields_get_delete_fields($node, $voc){
+
+  $del_fields = array(); 
+  $field_array = variable_get('tax_dynamic_fields_'.$node->nid, 0);
+  if(empty($field_array)){
+    $field_array = taxonomy_fields_get_field_array($node);
+  }
+  foreach($field_array as $field_name => $field){
+    if(is_array($field['tax'])){
+      foreach($field['tax'] as $key => $value){
+        if(is_array($value) && $voc == $value['vid']){
+          unset($field_array[$field_name]['tax'][$key]);
+        }
+      }
+      if($field_array[$field_name]['in_type'] == false && empty($field_array[$field_name]['tax']) && $field_array[$field_name]['status'] == true){
+        $del_fields[] = $field_name;  
+      }
+    }
+  }
+  variable_set('tax_dynamic_fields_'.$node->nid,$field_array);
+  return $del_fields;
+}
+
+/**
+ *  Returns array with existing fields as last saved.
+ */
+function taxonomy_fields_get_field_array($node){
+
+  $fields = array();
+  $fields_array = array();
+  $in_node = module_invoke('content', 'types', $node->type);
+  if(module_exists('fieldgroup')){
+    $groups = module_invoke('fieldgroup', 'groups', $node->type);
+  }
+  if($node->nid != 0){
+    $fields = taxonomy_fields_get_node_info($node);
+              
+    foreach ($fields as $tid => $field_term){               
+      if($field_term['ancestors']){
+        $field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+      }
+      $voc = module_invoke('taxonomy','get_term',$tid);   
+      if($field_term['fields']){          
+        foreach ($field_term['fields'] as $field) {
+          if(empty($fields_array[$field['field_name']])){
+            $fields_array[$field['field_name']] = array('in_type' => false, 'status' => true);
+          }
+          $fields_array[$field['field_name']]['tax'][$tid] = array('vid' => $voc->vid, 'tid' => $tid);
+        }
+      }
+    }
+  }
+  foreach ($in_node['fields'] as $key => $value){
+    if(empty($fields_array[$key])){
+      $fields_array[$key] = array('in_type' => true);
+    }
+    else{
+      $fields_array[$key]['in_type'] = true;
+    }
+  }
+  if(!empty($groups)){
+    foreach ($groups as $key => $value){
+      if(!empty($value['fields'])){
+        $fields_array[$key] = array('in_type' => true);
+      }
+    }
+  }
+  return $fields_array;
+}
+
+/**
+ * Implementation of hook_nodeapi().
+ */
+function taxonomy_fields_nodeapi(&$node, $op, $teaser, $page) {
+	
+  if(variable_get('taxonomy_fields_'.$node->type,0)){
+  	
+  	$fields = taxonomy_fields_get_node_info($node);
+	switch ($op) {
+
+      case 'load':
+        $default_additions = array();
+    	$in_node = module_invoke('content','types',$node->type);
+    	$return = array();	
+	  	  		
+	  	foreach ($fields as $tid => $field_term) {		
+	   
+		  	if($field_term['ancestors']){
+				$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+		  	}
+			if($field_term['fields']){
+		  		foreach($field_term['fields'] as $field){
+		    		    		
+					if(!isset($in_node['fields'][$field['field_name']])){
+						$universal = FALSE;
+						$query = db_query('SELECT tf.field_value, tf.universal,tf.delta FROM {taxonomy_fields} tf WHERE tf.field_name="%s" AND tf.tid=%d',$field['field_name'], ltrim(strrchr($field['type_name'],'_'),'_'));
+						$node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+						    
+					    while($result2 = db_fetch_object($query)){
+					    	if($result2->universal){
+								$universal = TRUE;
+								$node_field[$result2->delta] = unserialize($result2->field_value);
+					    	}
+					    }						   
+					    if(!$universal){
+					    	$default_additions = array_merge($default_additions, _taxonomy_fields_field_invoke_default($op, $node, $field, $teaser, $page)); 	
+		    				if ($default_additions) {
+						      	foreach ($default_additions as $key => $value) {
+						        	$node->$key = $value;
+						      	}
+						    }					    	
+						    $additions = _taxonomy_fields_field_invoke('load', $node, $field);						    
+						    if ($additions) {
+						      	foreach ($additions as $key => $value) {
+						        	$default_additions[$key] = $value;
+						      	}
+						    }						    
+					    }
+					    else{
+					    	$default_additions[$field['field_name']] = $node_field;
+					    	$node->$field['field_name'] = $node_field;
+					    }				  
+		 			}
+				}
+			}
+	  }
+      return $default_additions;    	
+      break;
+
+      case 'insert':  
+
+    	foreach ($fields as $tid => $field_term){   		
+		  	if($field_term['ancestors']){
+			  	$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+		  	}
+		  	if($field_term['fields']){
+	    		foreach($field_term['fields'] as $field){
+	    			if(!$field['universal']){ 
+						_taxonomy_fields_field_invoke('insert', $node, $field);
+						_taxonomy_fields_field_invoke_default('insert', $node, $field);
+	    			}
+	    		}
+		  	}
+    	}
+      	break;
+
+      case 'update':
+
+    	foreach ($fields as $tid => $field_term){   		
+		  	if($field_term['ancestors']){
+			  	$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+		  	}
+		  	if($field_term['fields']){
+	    		foreach($field_term['fields'] as $field){
+	    			if(!$field['universal']){ 
+						_taxonomy_fields_field_invoke('update', $node, $field);
+						_taxonomy_fields_field_invoke_default('update', $node, $field);
+	    			}
+	    		}
+		  	}
+    	}
+      	break;
+    
+      case 'delete':
+
+        foreach ($fields as $tid => $field_term){		
+		  	if($field_term['ancestors']){
+			  	$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+		  	}
+		  	if($field_term['fields']){	
+	    		foreach($field_term['fields'] as $field){
+	    			if(!$field['universal']){ 
+						_taxonomy_fields_field_invoke('delete', $node, $field);
+						_taxonomy_fields_field_invoke_default('delete', $node, $field);
+	    			}				
+	    		}
+		  	}
+      	}         
+      	break;
+      
+      case 'delete revision':
+
+        foreach ($fields as $tid => $field_term){ 		
+		  	if($field_term['ancestors']){
+			  	$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+		  	}
+		  	if($field_term['fields']){
+	    		foreach($field_term['fields'] as $field){
+	    			if(!$field['universal']){ 
+						_taxonomy_fields_field_invoke('delete revision', $node, $field);
+						_taxonomy_fields_field_invoke_default('delete revision', $node, $field);
+	    			}				
+	    		}
+		  	}
+      	}         
+      	break;
+      
+      case 'view':
+    	
+    	//list information of this content_type to check if a field already exists
+    	$in_node = module_invoke('content','types',$node->type);
+       	$return = array();  		
+
+	  	foreach ($fields as $tid => $field_term) {		
+	  		if($field_term['ancestors']){
+				$field_term['fields'] = array_merge($field_term['fields'],taxonomy_fields_get_ancestor_fields($tid));
+	  		}
+
+		  	if($field_term['fields']){	  		
+	  			foreach($field_term['fields'] as $field){	    		    		
+					if(!isset($in_node['fields'][$field['field_name']])){
+						
+						if ($node->in_preview) {							
+							_taxonomy_fields_widget_invoke('process form values', $node, $field);
+						}		
+				      	$result=_taxonomy_fields_field_view($node, $teaser, $page, $field);
+				      	if (is_array($result)) {
+					      	foreach($result as $item){
+					      		$return[$field['field_name']]=$item;
+					      	}
+				      	}
+				      	else if (isset($result)) {
+				        	$return[$field['field_name']] = $result;
+				      	}
+				      	$in_node['fields'][$field['field_name']]=$result;					      					    
+					}
+	    		}
+		  	}	
+	  	}			
+    	if(is_array($return)){
+		  $node->content = array_merge((array) $node->content, $return);
+    	}
+      	break;
+ 
+      case 'validate':
+
+        $fields = array();
+        if(!empty($node->taxonomy)){
+          foreach($node->taxonomy as $taxonomy){
+            if(is_array($taxonomy)){
+              
+              foreach($taxonomy as $tid){
+                if($tid != '0'){
+                  $dynamic_terms = taxonomy_fields_terms($tid);
+                  if($dynamic_terms['ancestors']){
+                    $ancestor_fields = taxonomy_fields_get_ancestor_fields($tid);
+                    if(is_array($ancestor_fields)){
+                      foreach($ancestor_fields as $ancestor_field){
+                        $dynamic_terms['fields'] = array_merge($dynamic_terms['fields'], array($ancestor_field['field_name'] => $ancestor_field));
+                      }
+                    }
+                  }
+                  if(empty($fields[$tid])){
+                    $fields[$tid] = $dynamic_terms;           
+                    if(!empty($dynamic_terms['fields'])){
+                      foreach($dynamic_terms['fields'] as $field_name => $field){
+                        $node->$field_name = $_POST[$field_name];
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            else{
+              if($taxonomy != '0'){
+                $dynamic_terms = taxonomy_fields_terms($taxonomy);
+                if($dynamic_terms['ancestors']){
+                  $ancestor_fields = taxonomy_fields_get_ancestor_fields($taxonomy);
+                  if(is_array($ancestor_fields)){
+                    foreach($ancestor_fields as $ancestor_field){
+                      $dynamic_terms['fields'] = array_merge($dynamic_terms['fields'], array($ancestor_field['field_name'] => $ancestor_field));
+                    }
+                  }
+                }
+                if(empty($fields[$taxonomy])){
+                  $fields[$taxonomy] = $dynamic_terms;
+              
+                  if(!empty($dynamic_terms['fields'])){
+                    foreach($dynamic_terms['fields'] as $field_name => $field){
+                      $node->$field_name = $_POST[$field_name];
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+    	foreach ($fields as $tid => $field_term){
+		  	if($field_term['fields']){		  	
+	    		foreach($field_term['fields'] as $field){
+				    _taxonomy_fields_widget_invoke('validate', $node, $field);
+				    _taxonomy_fields_widget_invoke('process form values', $node, $field);
+				    _taxonomy_fields_field_invoke('validate', $node, $field, $teaser, $page);			   
+				    _taxonomy_fields_field_invoke_default('validate', $node, $field, $teaser, $page);
+	    		}
+		  	}
+    	}
+    	
+    	break;
+    
+      case 'submit':
+        $fields = array();
+        if(!empty($node->taxonomy)){
+          foreach($node->taxonomy as $taxonomy){
+            if(is_array($taxonomy)){
+              foreach($taxonomy as $tid){
+                if($tid != '0'){
+                  $dynamic_terms = taxonomy_fields_terms($tid);
+                  if($dynamic_terms['ancestors']){
+                    $ancestor_fields = taxonomy_fields_get_ancestor_fields($tid);
+                    if(is_array($ancestor_fields)){
+                      foreach($ancestor_fields as $ancestor_field){
+                        $dynamic_terms['fields'] = array_merge($dynamic_terms['fields'], array($ancestor_field['field_name'] => $ancestor_field));
+                      }
+                    }
+                  }
+                  if(empty($fields[$tid])){
+                    $fields[$tid] = $dynamic_terms;
+              
+                    if(!empty($dynamic_terms['fields'])){
+                      foreach($dynamic_terms['fields'] as $field_name => $field){
+                        $node->$field_name = $_POST[$field_name];
+                      }
+                    }
+                  }
+                }
+              }
+            }
+            else{
+              if($taxonomy != '0'){
+                $dynamic_terms = taxonomy_fields_terms($taxonomy);
+                if($dynamic_terms['ancestors']){
+                  $ancestor_fields = taxonomy_fields_get_ancestor_fields($taxonomy);
+                  if(is_array($ancestor_fields)){
+                    foreach($ancestor_fields as $ancestor_field){
+                      $dynamic_terms['fields'] = array_merge($dynamic_terms['fields'], array($ancestor_field['field_name'] => $ancestor_field));
+                    }
+                  }
+                }
+                if(empty($fields[$taxonomy])){
+                  $fields[$taxonomy] = $dynamic_terms;
+                  if(!empty($dynamic_terms['fields'])){
+                    foreach($dynamic_terms['fields'] as $field_name => $field){
+                      $node->$field_name = $_POST[$field_name];
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+    	foreach ($fields as $field_term){
+		  	if($field_term['fields']){
+	    		foreach($field_term['fields'] as $field){
+	    		  if($field['type'] == 'content_taxonomy'){
+	    		    global $content_taxonomy_array_cleared;
+                    $content_taxonomy_array_cleared[$node->nid] = TRUE;
+	    		  }
+				    _taxonomy_fields_widget_invoke('submit', $node, $field);
+				    _taxonomy_fields_widget_invoke('process form values', $node, $field);
+				    _taxonomy_fields_field_invoke('submit', $node, $field, $teaser, $page);			   
+				    _taxonomy_fields_field_invoke_default('submit', $node, $field, $teaser, $page);
+	    		}
+		  	}
+    	}    	
+    	break;
+  	}
+  }
+} 
+
+/**
+ * Invoke a field hook.
+ */
+function _taxonomy_fields_field_invoke($op, &$node, $field, $teaser = NULL, $page = NULL){
+	
+	$node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+	$return = array();
+	
+	$field_types = _taxonomy_fields_field_types();
+    $module = $field_types[$field['type']]['module'];   
+    $function = $module .'_field';
+    
+    if (function_exists($function)) {
+    	$result = $function($op, $node, $field, $node_field, $teaser, $page);
+    	if (is_array($result)) {
+        	$return = array_merge($return, $result);
+      	}
+      	else if (isset($result)) {
+        	$return[] = $result;
+      	}
+    }
+    // test for values in $node_field in case modules added items on insert
+    if (isset($node->$field['field_name']) || count($node_field)) {
+      	$node->$field['field_name'] = $node_field;
+    }
+    return $return;
+}
+
+/**
+ * Invoke content.module's version of a field hook.
+ */
+function _taxonomy_fields_field_invoke_default($op, &$node, $field, $teaser = NULL, $page = NULL) {
+	
+	$return = array();
+	$node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();	
+	$db_info = module_invoke('content','database_info',$field);
+	if (count($db_info['columns'])) {
+		$result = module_invoke('content','field',$op, $node, $field, $node_field, $teaser, $page);
+		if (is_array($result)) {
+	        $return = array_merge($return, $result);
+	    }
+	    else if (isset($result)) {
+	        $return[] = $result;
+	    }
+	}
+	
+	if (isset($node->$field['field_name'])) {
+		$node->$field['field_name'] = $node_field;
+	} 	
+	return $return;
+}
+
+/**
+ * Invoke a widget hook.
+ */
+function _taxonomy_fields_widget_invoke($op, &$node, $field) {
+	
+    $widget_types = taxonomy_fields_widget_types();
+    $module = $widget_types[$field['widget']['type']]['module'];
+
+  	$return = array();
+
+    $node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+
+    $function = $module .'_widget';
+    if (function_exists($function)) {
+
+        $result = $function($op, $node, $field, $node_field);
+        if (is_array($result) && $op == 'form') {
+          	$result[$field['field_name']]['#weight'] = $field['widget']['weight'];
+        }
+        if (is_array($result)) {
+          	$return = array_merge($return, $result);
+        }
+        else if (isset($result)) {
+          	$return[] = $result;
+        }
+    }
+     
+      // test for values in $node_field in case modules added items on insert
+    if (is_object($node) && (isset($node->$field['field_name']) || count($node_field))) {
+        $node->$field['field_name'] = $node_field;
+    }
+    
+  	return $return;
+}
+
+/**
+ * Return an array with all fields of ancestors
+ */
+function taxonomy_fields_get_ancestor_fields($tid){
+	$field_term = array();
+	$parents = module_invoke('taxonomy','get_parents_all',$tid);
+	if(is_array($parents)){
+	    foreach ($parents as $parent){
+			if($parent->tid != $tid){
+				$terms = taxonomy_fields_terms($parent->tid);
+				if(is_array($terms['fields'])){
+					foreach ($terms['fields'] as $term){
+						$term['term'] = $parent->name;
+						$field_term[] = $term;
+					}
+				}
+			}
+		}
+	}
+	return $field_term;	
+}
+
+/**
+ * Return a list of all fields of a node
+ */
+function taxonomy_fields_get_node_info(&$node){
+	$field = array();
+	$query = db_query('SELECT tid FROM {term_node} WHERE nid = %d', $node->nid);
+  	while($terms = db_fetch_object($query)){
+  		$term = $terms->tid;
+  	 	$field[$term] = taxonomy_fields_terms($term);
+  	}
+  	return $field;
+}
+
+/**
+ * Return a list of all terms.
+ *
+ * @param $tid
+ *   If set, return information on just this term.
+ */
+function taxonomy_fields_terms($tid = NULL) {
+  $info = _taxonomy_fields_term_info();
+  if (isset($tid)) {
+    if (isset($info['terms']['term_related_'.$tid])) {
+      return $info['terms']['term_related_'.$tid];
+    }
+    else {
+      return NULL;
+    }
+  }
+  return $info['terms'];
+}
+
+/**
+ * Return a list of field types.
+ */
+function _taxonomy_fields_field_types() {
+  $info = _taxonomy_fields_term_info();
+  return $info['field types'];
+}
+
+/**
+ * Return a list of widget types.
+ */
+function taxonomy_fields_widget_types() {
+  $info = _taxonomy_fields_term_info();
+  return $info['widget types'];
+}
+
+/**
+ * Return a list of all fields.
+ *
+ * @param $field_name
+ *   If set, return information on just this field.
+ * @param $tid
+ *   If set, return information of the field within the context of this term.
+ *  
+ */
+function taxonomy_fields_fields($field_name = NULL, $tid = NULL) {
+  $info = _taxonomy_fields_term_info();
+  if (isset($field_name)) {
+    if (isset($info['fields'][$field_name])) {
+      if (isset($tid)) {
+        if (isset($info['terms']['term_related_'.$tid]['fields'][$field_name])) {
+          return $info['terms']['term_related_'.$tid]['fields'][$field_name];
+        }
+        else {
+          return NULL;
+        }
+      }
+      else {          
+        return $info['fields'][$field_name];
+      }
+    }
+    else {
+      return NULL;
+    }
+  }
+  return $info['fields'];
+}
+
+function taxonomy_fields_field_overview_form(){
+  $form = array();
+  $form['#groups'] = array();
+  $field_types = _content_field_types(); 
+  $fields = taxonomy_fields_fields();
+  if(is_array($fields)){
+    // Move group fields into a 'fields' subgroup to make them easier to identify.
+    // Remove fields that are used in groups from the form, the group will handle them.
+    if (module_exists('fieldgroup')) {
+      $field_groups = module_invoke('fieldgroup','groups');
+      $query = db_query('SELECT nfi.*, ngf.group_name, nf.type FROM {node_group_fields} ngf 
+                        LEFT JOIN {node_field_instance} nfi ON nfi.field_name = ngf.field_name
+                        LEFT JOIN {node_field} nf ON nf.field_name = ngf.field_name
+                        WHERE ngf.type_name = "taxonomy_fields" AND nfi.type_name LIKE "term_related_%%"');
+      while ($result = db_fetch_array($query)){
+        $taxonomy_fields[$result['group_name']]['fields'][$result['field_name']] = $result;
+      }
+      $form['#group_labels'][0] = t('No group');      
+      if (!$field_groups) {
+        drupal_set_message(t('There are no groups configured.'));
+      }
+      if(is_array($field_groups)){
+        foreach ($field_groups as $type_name => $content_type){
+          foreach ($content_type as $group_name => $group) {
+            $group['fields'] = is_array($taxonomy_fields[$group_name]['fields']) ? $taxonomy_fields[$group_name]['fields']: array();
+            $form['#groups'][$group_name] = $group; 
+            $fields[$group_name]['#weight'] = $group['weight'];
+            if(empty($fields[$group_name]['weight_info'])){
+              $fields[$group_name]['weight_info'] .= t('@weight in type %type_name', array('@weight' => $group['weight'], '%type_name' => $type_name));             
+            }
+            else{
+              $fields[$group_name]['weight_info'] .= t(',<br />@weight in type %type_name', array('@weight' => $group['weight'], '%type_name' => $type_name));              
+            }
+            if(is_array($group['fields'])){
+              foreach ($group['fields'] as $field_name => $field) {
+                unset($fields[$field_name]);
+              }
+            }            
+          }         
+        }
+      }
+      foreach($form['#groups'] as $key => $value){
+        $form['#group_labels'][$key] = t($value['label']);
+      }
+    }
+    $form['disabled']['#value'] = array();
+    foreach ($fields as $key => $value) {
+
+      // Limiting weight to < 10 will keep workflow and submit elements from being added to the overview table.
+      // They're outside the weight range allowed for CCK fields, so won't interfere with field placement.
+  
+      if (is_array($value) && isset($value['#weight'])  && $value['#weight'] <= 10) {
+  
+        // if this item is a group, insert group info into table, then add all the group fields below it
+        if (substr($key, 0, 6) == 'group_' && isset($form['#groups'])) {
+          
+          $row = $group_form = array();
+          $row['label']     = $form['#group_labels'][$form['#groups'][$key]['group_name']];
+          $row['name']      = $form['#groups'][$key]['group_name'];
+          $row['type']      = t('group');
+          $row['weights']   = t($value['weight_info']);
+          $row['groups']    = '';
+          $data = $row;
+
+          foreach ($form['#groups'][$key]['fields'] as $field_name => $field) {
+            $row = array();
+            $row['label']     = $field['label'];
+            $row['name']      = $field['field_name'];
+            $row['type']      = $field_types[$field['type']]['label'];
+            $row['weights']   = 'form-field-weights';
+            $row['groups']    = 'form-field-groups';
+            $group_form[$field['weight']][] = array($field_name => $row);
+  
+            $form['field-weights'][$field_name] = array('#type' => 'weight', '#default_value' => $field['weight']);
+            $form['field-groups'][$field_name]  = array('#type' => 'select', '#options' => $form['#group_labels'], '#default_value' => $form['#groups'][$key]['group_name']);
+            $form['field-groups-defaults'][$field_name]  = array('#type' => 'hidden', '#value' => $form['#groups'][$key]['group_name']);
+          }
+          // sort the group fields by weight
+          ksort($group_form);
+          $group = (array) $data + array('fields' => $group_form);
+          $form['#table'][$value['#weight']][] = array($key => $group);
+        }
+  
+        // else if this item is a top-level field, insert field row into the table
+        elseif (substr($key, 0, 6) == 'field_' && substr($value['type_name'], 0, 13) == 'term_related_') {
+          
+          $row = array();
+          $field = $fields[$key];
+          $row['label']     = $field['widget']['label'];
+          $row['name']      = $field['field_name'];
+          $row['type']      = $field_types[$field['type']]['label'];
+          $row['weights']   = 'form-field-weights';
+          if (isset($form['#groups'])) {
+            $row['groups']  = 'form-field-groups';
+          }          
+          $form['#table'][$field['weight']][] = array($key => $row);
+          $form['field-weights'][$key] = array('#type' => 'weight', '#default_value' => $field['weight']);
+          if (isset($form['#groups'])) {
+            $form['field-groups'][$key]  = array('#type' => 'select', '#options' => $form['#group_labels'], '#default_value' => '');
+          }
+        }
+      }
+    }
+
+    // sort the table by weight
+    ksort($form['#table']);
+    // add submit buttons and hidden fields
+    $form['tax_fields'] = array(
+      '#type' => 'fieldset', 
+      '#title' => 'Taxonomy fields',
+      '#weight' => -1,
+    );
+    $form['tax_fields']['loading'] = array(
+      '#type' => 'weight',
+      '#title' => t('Weight for loading animation'),
+      '#default_value' => variable_get('tax_dynamic_fields_loading', 0),
+    );
+    $form['tax_fields']['hide'] = array(
+      '#type' => 'checkbox',
+      '#title' => t('Hide empty groups'),
+      '#default_value' => variable_get('tax_dynamic_fields_hide', 0),
+    );
+    $form['submit']                         = array('#type' => 'submit', '#value' => t('Update'));
+    $form['field-weights']['#tree']         = TRUE;
+    $form['group-weights']['#tree']         = TRUE;
+    $form['field-groups']['#tree']          = TRUE;
+    $form['field-groups-defaults']['#tree'] = TRUE;
+    $form['disabled']['#type']              = 'hidden';
+    $form['disabled']['#value']             = serialize($form['disabled']['#value']);
+    return $form;   
+  } 
+}
+
+/**
+ *  Theme the field overview table by iterating through the form and rendering form elements in table cells
+ */
+function theme_taxonomy_fields_field_overview_form($form) {
+  if (!$form['#table']) {
+    return;
+  }
+  // The css for this form contains non-validating styles,
+  // so we use a separate file, included only on the relevant page.
+  drupal_add_css(drupal_get_path('module', 'content') .'/content_admin.css');
+
+  $disabled = unserialize($form['disabled']['#value']);
+
+  if (module_exists('fieldgroup')) {
+    $header = array(t('Label'), t('Name'), t('Type'), t('Weight'), t('Group'));
+    $colspan = 5;
+  }
+  else {
+    $header = array(t('Label'), t('Name'), t('Type'), t('Weight'));
+    $colspan = 4;
+  }
+
+  $rows = array();
+  $i = 0;
+
+  // The table was created in the form
+  // iterate through it and render form elements when placeholders are encountered
+  // then run the rows array through theme_table().
+  foreach ($form['#table'] as $weight => $frow) {
+    foreach ($frow as $delta => $item) {
+      foreach ($item as $fname => $field) {
+        $row = array();
+        $class = 'content-field-overview-enabled';
+        if (in_array($fname, $disabled)) {
+          $class = 'content-field-overview-disabled';
+        }
+        foreach ($field as $col => $cell) {
+          // display cols other than the group 'fields' col
+          if ($col != 'fields') {
+            switch ($cell) {
+            case 'form-field-weights':
+              $row[] = drupal_render($form['field-weights'][$fname]);
+              break;
+            case 'form-group-weights':
+              $row[] = drupal_render($form['group-weights'][$fname]);
+              break;
+            case 'form-field-groups':
+              $row[] = drupal_render($form['field-groups'][$fname]);
+              break;
+            default:
+              $row[] = array('data' => $cell, 'class' => $class);
+            }
+          }
+
+          elseif (isset($form['#groups'])) {
+            // if this form contains groups info and this is a group 'fields' col, finish the previous row
+            // then theme the 'fields' col with a fieldset containing a table and the group fields
+            $grows = array();
+
+            if (!empty($cell)) {
+              foreach ($cell as $gweight => $grow) {
+                foreach ($grow as $gdelta => $gitem) {
+                  foreach ($gitem as $gname => $gfield) {
+                    $grow = array();
+                    foreach ($gfield as $gcol => $gcell) {
+                      switch ($gcell) {
+                        case 'form-field-weights':
+                          $grow[] = drupal_render($form['field-weights'][$gname]);
+                          break;
+                        case 'form-field-groups':
+                          $grow[] = drupal_render($form['field-groups'][$gname]);
+                          break;
+                        default:
+                          $grow[] = $gcell;
+                      }
+                    }
+                    $grows[] = array('data' => $grow, 'class' => 'content-field-overview-enabled');
+                  }
+                }
+              }
+            }
+            else {
+              $grows[] = array(array('data' => t('No fields have been added to this group.'), 'colspan' => $colspan, 'class' => 'content-field-overview-empty'));
+            }
+
+            // add the group row in its own table above the group fields table, then reset $row().
+            $fieldset = array(
+              '#title' => t('!label (!name)', array('!label' => $form['#group_labels'][$fname], '!name' => $fname)),
+              '#collapsible' => TRUE,
+              '#collapsed' => FALSE,
+              '#value' => theme('table', array(), array(array('data' => $row, 'class' => 'content-field-overview-group'))) . theme('table', $header, $grows),
+              );
+            $row = array();
+            $row[] = array(
+              'data' => theme('fieldset', $fieldset),
+              'colspan' => $colspan,
+              'class' => 'active',
+              );
+            $grows = array();
+          }
+        }
+        $rows[] = $row;
+      }
+    }
+  }
+  $output = '<p>Groups can be added and changed within each CCK content type.<br />';
+  $output .= 'If a group is not defined for a specific type it will be displayed with the weight 0.</p>';
+  $output .= drupal_render($form['tax_fields']);
+  $output .= theme('table', $header, $rows, array('class' => 'content-field-overview'));
+  $output .= drupal_render($form);
+  return $output;
+
+}
+
+function taxonomy_fields_field_overview_form_submit($form_id, $form_values) {
+
+  variable_set('tax_dynamic_fields_loading', $form_values['loading']);
+  variable_set('tax_dynamic_fields_hide', $form_values['hide']);
+  drupal_set_message(t('Updated taxonomy fields settings.'));
+  
+  $msg = FALSE;
+  foreach ((array) $form_values['field-groups'] as $key => $value) {
+    if ($key && !in_array($key, unserialize($form_values['disabled']))) {
+      $values  = array('field_name' => $key, 'group' => $value, 'type_name' => 'taxonomy_fields');
+      $default = $form_values['field-groups-defaults'][$key];      
+      if ($default != $values['group']) {
+        if ($values['group'] && !$default) {
+          db_query("INSERT INTO {node_group_fields} (type_name, group_name, field_name) VALUES ('%s', '%s', '%s')",
+                    'taxonomy_fields', $values['group'], $values['field_name']);
+        }
+        else if ($values['group']) {
+          db_query("UPDATE {node_group_fields} SET group_name = '%s' WHERE type_name = '%s' AND field_name = '%s'",
+                    $values['group'], 'taxonomy_fields', $values['field_name']);
+        }
+        else {
+          db_query("DELETE FROM {node_group_fields} WHERE type_name = '%s' AND field_name = '%s'", 'taxonomy_fields', $values['field_name']);
+        }
+        if(module_exists('fieldgroup')){
+          cache_clear_all('fieldgroup_data', 'cache_content');
+        }
+      }
+      $msg = TRUE;
+    }
+  }
+  if ($msg) {
+    drupal_set_message(t('Updated field groups.'));
+  }
+  $msg = FALSE;
+  foreach ((array) $form_values['field-weights'] as $key => $value) {
+    if ($key && !in_array($key, unserialize($form_values['disabled']))) {      
+      db_query("UPDATE {node_field_instance} SET weight = %d WHERE type_name LIKE 'term_related_%%' AND field_name = '%s'",
+        $value, $key);
+      $msg = TRUE;
+    }
+  }
+  if ($msg) {
+    drupal_set_message(t('Updated field weights.'));
+  }
+  taxonomy_fields_clear_terms_cache();
+  if(module_exists('fieldgroup')){
+    cache_clear_all('fieldgroup_data', 'cache_content');
+  }
+
+}
+
+/**
+ * Menu callback; present a form for removing a field from a term.
+ */
+function _taxonomy_fields_edit_field_remove($tid, $field_name) {
+	
+	$term = taxonomy_fields_terms($tid);
+	$field = $term['fields'][$field_name];
+	
+	$form = array();
+	$form['tid'] = array(
+	'#type' => 'value',
+	'#value' => $tid,
+	);
+	$form['field_name'] = array(
+	'#type' => 'value',
+	'#value' => $field_name,
+	);
+	
+	$output = confirm_form($form, 
+  		t('Are you sure you want to remove the field %field from the term %term?', array('%field' => $field['widget']['label'], '%term' => $term['name'])),
+   		'admin/content/taxonomy_fields', 
+   		t('If you have any content left in this field, it will be lost. This action cannot be undone.'),
+   		t('Remove'), t('Cancel'),
+   		'confirm'
+   		);
+   		
+   	return $output;
+   		 
+}
+
+/**
+ * Remove a field from a term.
+ */
+function _taxonomy_fields_edit_field_remove_submit($form_id, $form_values) {
+  $type = taxonomy_fields_terms($form_values['tid']);
+  $field = $type['fields'][$form_values['field_name']];
+
+  if ($type && $field && $form_values['confirm']) {
+    taxonomy_fields_field_instance_delete($form_values);
+    drupal_set_message(t('Removed field %field from %type.', array('%field' => $field['widget']['label'], '%type' => $type['name'])));
+    return 'admin/content/taxonomy_fields';
+  }
+}
+
+/**
+ * Delete an existing field instance.
+ *
+ * @param $instance
+ *   An array of properties to use in selecting a field instance. Valid keys:
+ *   - 'tid' - The name of the term in which the instance exists.
+ *   - 'field_name' - The name of the field whose instance is to be deleted.
+ */
+function taxonomy_fields_field_instance_delete($instance) {
+  db_query("DELETE FROM {node_field_instance} WHERE type_name = '%s' AND field_name = '%s'", 'term_related_'.$instance['tid'], $instance['field_name']); 
+  db_query("DELETE FROM {taxonomy_fields} WHERE tid = %d AND field_name = '%s'", $instance['tid'], $instance['field_name']);
+
+  $type = taxonomy_fields_terms($instance['tid']);
+  $field = $type['fields'][$instance['field_name']];
+  $field_types = _taxonomy_fields_field_types();
+  $field_type = $field_types[$field['type']];
+  $columns = module_invoke($field_type['module'], 'field_settings', 'database columns', $field);
+
+  $instances = db_result(db_query("SELECT COUNT(*) FROM {node_field_instance} WHERE field_name = '%s'", $instance['field_name']));
+  // If only one instance remains, we may need to change the database
+  // representation for this field.
+  if ($instances == 1) {
+    if (!($field['multiple'])) { 	
+      // Multiple-valued fields are always stored per-content-type.
+      if (is_array($columns) && count($columns)) {
+        $new_field = $field;
+        $new_field['db_storage'] = CONTENT_DB_STORAGE_PER_CONTENT_TYPE;
+        db_query("UPDATE {node_field} SET db_storage = %d WHERE field_name = '%s'", CONTENT_DB_STORAGE_PER_CONTENT_TYPE, $instance['field_name']);
+        content_alter_db_field($field, $columns, $new_field, $columns);
+      }
+    }
+  }
+
+  // If no instances remain, delete the field entirely.
+  else if ($instances == 0) {
+    if (is_array($columns) && count($columns)) {
+      content_alter_db_field($field, $columns, array(), array());
+    }
+    db_query("DELETE FROM {node_field} WHERE field_name = '%s'", $instance['field_name']);
+  }
+  
+  //if this was the only field assigned to this term, delete the term table
+  $result=db_result(db_query("SELECT COUNT(*) FROM {node_field_instance} WHERE type_name = '%s'", 'term_related_'.$instance['tid'] ));
+  if($result==0){
+  	db_query('DROP TABLE {content_type_term_related_'.$instance['tid'].'}');
+  }
+
+  taxonomy_fields_clear_terms_cache();
+}
+
+/**
+ * Menu callback; presents the field editing page.
+ */
+function _taxonomy_fields_edit_field($tid, $field_name) {
+	
+	$term = taxonomy_fields_terms($tid);
+	$field = $term['fields'][$field_name];
+	
+	$field_types = _taxonomy_fields_field_types();
+	$field_type = $field_types[$field['type']];
+	$widget_types = taxonomy_fields_widget_types();
+	$widget_type = $widget_types[$field['widget']['type']];
+
+	$form = array();
+	
+	//field settings for the field with this term
+	$form['widget'] = array(
+		'#type' => 'fieldset',
+		'#title' => t('Widget settings'),
+		'#description' => t('<br />These settings apply only to the %field field as it appears in the %type vocabulary term.', array('%field' => $field['widget']['label'], '%type' => $term['name'])),
+	);
+	$options = array();
+	foreach ($widget_types as $possible_widget_name => $possible_widget_type) {
+		if (in_array($field['type'], $possible_widget_type['field types'])) {
+		  	$options[$possible_widget_name] = $possible_widget_type['label'];
+		}
+	}
+	if (count($options) == 1) {
+		$key = array_keys($options);
+		$default_widget = array_pop($key);
+	}
+	$form['widget']['widget_type'] = array(
+		'#type' => 'radios',
+		'#title' => t('Widget'),
+		'#options' => $options,
+		'#default_value' => $field['widget']['type'] ? $field['widget']['type'] : $default_widget,
+		'#required' => TRUE,
+	);
+	$form['widget']['label'] = array(
+		'#type' => 'textfield',
+		'#title' => t('Label'),
+		'#default_value' => $field['widget']['label'],
+		'#required' => TRUE,
+	);
+	/*
+	$form['widget']['weight'] = array(
+		'#type' => 'weight',
+		'#title' => t('Weight'),
+		'#default_value' => $field['widget']['weight'],
+		'#description' => t('In the node editing form, the heavier fields will sink and the lighter fields will be positioned nearer the top.'),
+	);
+*/
+	
+	$additions = module_invoke($widget_type['module'], 'widget_settings', 'form', $field['widget']);
+	if (is_array($additions)) {
+		$form['widget'] = array_merge($form['widget'], $additions);
+	}	
+	
+  $form['widget']['description'] = array(
+    '#type' => 'textarea',
+    '#title' => t('Help text'),
+    '#default_value' => $field['widget']['description'],
+    '#rows' => 5,
+    '#description' => t('Instructions to present to the user below this field on the editing form.'),
+    '#required' => FALSE,
+  );
+  
+  //default values settings
+  $handle = module_invoke('content','handle','widget', 'default value', $field);
+  if ($handle == CONTENT_CALLBACK_DEFAULT) {
+    $form['#attributes'] = array("enctype" => "multipart/form-data");
+    $form['widget']['default_value_fieldset'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Default value'),
+      '#collapsible' => TRUE,
+      '#collapsed' => TRUE,
+    );
+    $default_value = is_array($field['widget']['default_value']) ? $field['widget']['default_value'] : array();
+    $module = $widget_types[$field['widget']['type']]['module'];
+    $function = $module .'_widget';
+    if (function_exists($function)) {
+      $node = array(); 
+      // Make sure the default value is not a required field.
+      $widget_field = $field;
+      $widget_field['required'] = FALSE;
+      $function('prepare form values', $node, $widget_field, $default_value);
+      $form_element = $function('form', $node, $widget_field, $default_value);
+    }
+    $form['widget']['default_value_fieldset']['default_value_widget'] = $form_element;
+    $form['widget']['default_value_fieldset']['default_value_widget']['#tree'] = TRUE;
+    $form['widget']['default_value_fieldset']['advanced_options'] = array(
+      '#type' => 'fieldset',
+      '#title' => t('Php code'),
+      '#collapsible' => TRUE,
+      '#collapsed' => empty($field['widget']['default_value_php']),
+    );
+    $db_info = module_invoke('content','database_info',$field);
+    $columns = array_keys($db_info['columns']);
+    foreach ($columns as $key => $column) {
+      $columns[$key] = "'$column' => ...";
+    }
+    $sample = 'array( 0 => array('. implode(', ', $columns) .'), 1 => ...)';
+    $form['widget']['default_value_fieldset']['advanced_options']['default_value_php'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Code'),
+      '#default_value' => $field['widget']['default_value_php'],
+      '#rows' => 6,
+      '#tree' => TRUE,
+      '#description' => t('Advanced Usage Only: PHP code that returns a default value. Should not include &lt;?php ?&gt; delimiters.<br/>If this field is filled out, the value returned by this code will override any value in the textfield above.<br/>Expected format : @sample.', array('@sample' => $sample)),
+    );
+  }
+  
+	//field universal settings
+	if($field_type['label']!='Image' && $field_type['label']!='file'){
+		$form['widget']['uni'] = array(
+			'#type' => 'fieldset',
+			'#title' => t('Universal field value settings'),
+			'#description' => t('<br />Here you can give the field a value which will be always displayed'),
+		);
+	
+		$form['widget']['uni']['universal'] = array(
+			'#type' => 'checkbox',
+			'#title' => t('Universal'),
+			'#default_value' => $field['universal'],
+			 '#description' => t('All %field fields will have the same value for the %type term.',array('%field' => $field['widget']['label'], '%type' => $term['name'])),
+		);
+		
+		$node_field=array();  
+		if($field['universal']){
+			$query=db_query('SELECT field_value,delta FROM {taxonomy_fields} WHERE field_name="%s" AND universal=1 AND tid=%d', $field['field_name'],$tid);				
+			while($result=db_fetch_object($query)){
+				$node_field[$result->delta]=unserialize($result->field_value);				
+			}
+		}
+		
+		$module = $widget_types[$field['widget']['type']]['module'];
+		$function = $module .'_widget';
+		if (function_exists($function)) {
+			$function('prepare form values', $node, $field, $node_field);
+			$result = $function('form', $node, $field, $node_field);		
+			if (is_array($result)) {
+		    	$result[$field['field_name']]['#weight'] = $field['widget']['weight'];
+		    }
+		}
+		//change name to differ from default_values	    
+		$result[$field['field_name'].'_']=$result[$field['field_name']];
+		unset($result[$field['field_name']]);  
+		$form['widget']['uni']['universal_value']=$result;
+	}
+
+  //global field settings
+  $form['field'] = array(
+    '#type' => 'fieldset',
+    '#title' => t('Data settings'),
+    '#description' => t('These settings apply to the %field field in every content type and term in which it appears.', array('%field' => $field['widget']['label'])),
+  );
+  $form['field']['required'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Required'),
+    '#default_value' => $field['required'],
+  );
+  $form['field']['multiple'] = array(
+    '#type' => 'checkbox',
+    '#title' => t('Multiple values'),
+    '#default_value' => $field['multiple'],
+  );
+
+  $additions = module_invoke($field_type['module'], 'field_settings', 'form', $field);
+  if (is_array($additions)) {
+    $form['field'] = array_merge($form['field'], $additions);
+  }
+
+  $form['submit'] = array(
+    '#type' => 'submit',
+    '#value' => t('Save field settings'),
+  );
+  $form['tax_tid'] = array(
+    '#type' => 'value',
+    '#value' => $term['tid'],
+  );
+  $form['field_name'] = array(
+    '#type' => 'value',
+    '#value' => $field_name,
+  );
+  $form['#attributes'] = array("enctype" => "multipart/form-data");
+
+  return $form;
+
+}
+
+/**
+ * Validate a field's settings.
+ */
+function _taxonomy_fields_edit_field_validate($form_id, $form_values) {
+	
+  $type = taxonomy_fields_terms($form_values['tax_tid']);
+  $field = $type['fields'][$form_values['field_name']];
+  $field_types = _taxonomy_fields_field_types();
+  $field_type = $field_types[$field['type']];
+  $widget_types = taxonomy_fields_widget_types();
+  $widget_type = $widget_types[$field['widget']['type']];
+  
+  $field_function = $field_type['module'] .'_field';
+  $widget_function = $widget_type['module'] .'_widget';
+	
+	if($form_values['universal']){
+		
+		$uni_value=$form_values[$form_values['field_name'].'_'];
+
+		if (function_exists($widget_function)) {
+		   	$widget_function('validate', $node, $field, $uni_value);
+		   	$widget_function('process form values', $node, $field, $uni_value);
+		   	form_set_value(array('#parents' => array($form_values['field_name'].'_')), $uni_value);		   	
+		}
+		
+		if (function_exists($field_function)) {
+		  	$field_function('validate', $node, $field, $uni_value, $teaser, $page);
+		}
+		
+		$form=form_get_errors();
+		if (!empty($form)){
+			return 'admin/content/taxonomy_fields/'.$form_values['tax_tid'].'/fields/'.$form_values['field_name'];
+		}
+		//validate number fields because number.module does not validate on value-format
+		elseif($form_values['widget_type']=='number'){
+			foreach ($uni_value as $key =>$value){
+				if($value['value'] && !is_numeric($value['value'])){
+					$uni_value[$key]['value']=0;
+				}
+			}
+			form_set_value(array('#parents' => array($form_values['field_name'].'_')), $uni_value);
+		}
+	}
+
+  module_invoke($widget_type['module'], 'widget_settings', 'validate', array_merge($field, $form_values));
+  module_invoke($field_type['module'], 'field_settings', 'validate', array_merge($field, $form_values));
+
+  // If content.module is handling the default value,
+  // validate the result using the field validation.
+  $handle = module_invoke('content','handle','widget', 'default value', $field);
+  if ($handle == CONTENT_CALLBACK_DEFAULT) {
+    if (isset($form_values['default_value_php']) && ($php = trim($form_values['default_value_php']))) {
+      ob_start();
+      $return = eval($php);
+      ob_end_clean();
+      if (!is_array($return)) {
+        $error = TRUE;
+      }
+      else {
+        foreach ($return as $item) {
+          if (!is_array($item)) {
+            $error = TRUE;
+            break;
+          }
+        }
+      }
+      if ($error) {
+        $db_info = module_invoke('content','database_info',$field);
+        $columns = array_keys($db_info['columns']);
+        foreach ($columns as $key => $column) {
+          $columns[$key] = "'$column' => ...";
+        }
+        $sample = 'array( 0 => array('. implode(', ', $columns) .'), 1 => ...)';
+        form_set_error('default_value_php', t('The default value php code returned an incorrect value<br/>Expected format : @sample<br/>Returned value : @value', array('@sample' => $sample, '@value' => print_r($return, true))));
+        return;
+      }
+      else {
+        $default_value = $return;
+        $is_code = TRUE;
+        form_set_value(array('#parents' => array('default_value_php')), $php);
+        form_set_value(array('#parents' => array('default_value')), array());
+      }
+    }
+    else {
+      $default_value = $form_values['default_value_widget'][$field['field_name']];
+      $is_code = FALSE;
+      form_set_value(array('#parents' => array('default_value_php')), '');
+      form_set_value(array('#parents' => array('default_value')), $default_value);
+    }
+    if (isset($default_value)) {
+      $node = array();
+      $node[$form_values['field_name']] = $default_value;
+      $field['required'] = FALSE;
+
+      // If default_value is created from php code, don't run it through widget processing.
+      // This way the default value code can directly create the correct array without being
+      // mangled by widget processing which sometimes requires an input array in a completely different format.
+      if (function_exists($widget_function) && !$is_code) {
+        $widget_function('validate', $node, $field, $default_value);
+        $widget_function('process form values', $node, $field, $default_value);
+        // The widget processing may have altered the value, save it to be sure.
+        form_set_value(array('#parents' => array('default_value')), $default_value);
+      }
+      if (function_exists($field_function)) {
+        $field_function('validate', $node, $field, $default_value, NULL, NULL);
+      }
+      // The field validation routine won't set an error on the right field, so set it here.
+      if (form_get_errors()) {
+        if (trim($form_values['default_value_php'])) {
+          form_set_error('default_value_php', t('The default value php code created @value which is invalid.', array('@value' => print_r($default_value, true))));
+        }
+        else {
+          form_set_error('default_value', t('The default value is invalid.'));
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Save a field's settings after editing.
+ */
+function _taxonomy_fields_edit_field_submit($form_id, $form_values) {
+	
+	$term = taxonomy_fields_terms($form_values['tax_tid']);
+	$field = $term['fields'][$form_values['field_name']];
+	$field_types = _taxonomy_fields_field_types();
+	$field_type = $field_types[$field['type']];
+	$widget_types = taxonomy_fields_widget_types();
+	$widget_type = $widget_types[$form_values['widget_type']];
+	$widget_settings = array();
+	  // If content.module is handling the default value,
+	  // initialize $widget_settings with default values,
+	  $handle = module_invoke('content','handle','widget', 'default value', $field);
+	  if ($handle == CONTENT_CALLBACK_DEFAULT) {
+	    $widget_settings = array(
+	      'default_value' => $form_values['default_value'],
+	      'default_value_php' => $form_values['default_value_php'],
+	      );
+	  }
+		
+	$setting_names = module_invoke($widget_type['module'], 'widget_settings', 'save', $field);
+	if (is_array($setting_names)) {
+		foreach ($setting_names as $setting) {
+		  $widget_settings[$setting] = $form_values[$setting];
+		}
+	}
+	$field_settings = array();
+	$setting_names = module_invoke($field_type['module'], 'field_settings', 'save', $field);
+	if (is_array($setting_names)) {
+		foreach ($setting_names as $setting) {
+		  $field_settings[$setting] = $form_values[$setting];
+		}
+	}
+	
+	$prev_field = $field;
+	$prev_columns = module_invoke($field_type['module'], 'field_settings', 'database columns', $field);
+	
+	db_query("UPDATE {node_field_instance} SET label = '%s', widget_type = '%s', widget_settings = '%s', description = '%s' WHERE type_name = '%s' AND field_name = '%s'", $form_values['label'], $form_values['widget_type'], serialize($widget_settings), $form_values['description'], 'term_related_'.$form_values['tax_tid'], $form_values['field_name']);
+	
+	if ($form_values['multiple']) {
+		$field['db_storage'] = 0;
+	}
+	else {
+		$instances = db_result(db_query("SELECT COUNT(*) FROM {node_field_instance} WHERE field_name = '%s'", $form_values['field_name']));
+		if ($instances == 1) {
+		  $field['db_storage'] = 1;
+		}
+	}
+	db_query("UPDATE {node_field} SET required = %d, multiple = %d, global_settings = '%s', db_storage = %d WHERE field_name = '%s'", $form_values['required'], $form_values['multiple'], serialize($field_settings), $field['db_storage'], $form_values['field_name']);
+	
+	drupal_set_message(t('Saved field %field assigned to the %term term.', array('%field' => $form_values['label'], '%term' => $term['name'])));
+
+	taxonomy_fields_clear_terms_cache();
+	
+	$new_field = taxonomy_fields_fields($form_values['field_name']);
+	$new_columns = module_invoke($field_type['module'], 'field_settings', 'database columns', $new_field);
+	
+	if (!isset($prev_columns)) {
+		$prev_columns = array();
+	}
+	if (!isset($new_columns)) {
+		$new_columns = array();
+	}
+
+	content_alter_db_field($prev_field, $prev_columns, $new_field, $new_columns);
+	
+	if($form_values['universal'] && is_array($form_values[$form_values['field_name'].'_'])){
+		db_query('DELETE FROM {taxonomy_fields} WHERE field_name="%s" AND tid=%d', $form_values['field_name'], $form_values['tax_tid']);
+		foreach ($form_values[$form_values['field_name'].'_'] as $key => $value){
+			db_query('INSERT INTO {taxonomy_fields}(field_name, field_value, tid, delta, universal) VALUES ("%s","%s",%d,%d,%d)', $form_values['field_name'], $value ? serialize($value) : '', $form_values['tax_tid'], $key, 1);
+		}
+	}
+	else {
+	  	db_query('DELETE FROM {taxonomy_fields} WHERE field_name="%s" AND tid=%d', $form_values['field_name'], $form_values['tax_tid']);	
+		db_query('INSERT INTO {taxonomy_fields}(field_name, field_value, tid, delta, universal) VALUES ("%s","%s",%d,%d,%d)', $form_values['field_name'], '', $form_values['tax_tid'], 0, 0);
+	}
+
+	taxonomy_fields_clear_terms_cache();
+  	return 'admin/content/taxonomy_fields';
+}
+
+/**
+ * Collate all information on terms, fields, and related structures.
+ *
+ * @param $reset
+ *   If TRUE, clear the cache and fetch the information from the database again.
+ */
+function _taxonomy_fields_term_info($reset = FALSE) {
+  static $info;
+
+  if ($reset || !isset($info)) {
+    if ($cached = cache_get('taxonomy_fields_term_info', 'cache_content')) {
+      $info = unserialize($cached->data);
+    }
+    else {
+      $info = array(
+        'field types' => array(),
+        'widget types' => array(),
+        'fields' => array(),
+        'terms' => array(),
+      );
+
+      foreach (module_list() as $module) {
+        $module_field_types = module_invoke($module, 'field_info');
+        if ($module_field_types) {
+          foreach ($module_field_types as $name => $field_info) {
+            $info['field types'][$name] = $field_info;
+            $info['field types'][$name]['module'] = $module;
+            $info['field types'][$name]['formatters'] = array();
+          }
+        }
+
+        $module_widgets = module_invoke($module, 'widget_info');
+        if ($module_widgets) {
+          foreach ($module_widgets as $name => $widget_info) {
+            $info['widget types'][$name] = $widget_info;
+            $info['widget types'][$name]['module'] = $module;
+          }
+        }
+      }
+
+      foreach (module_list() as $module) {
+        $module_formatters = module_invoke($module, 'field_formatter_info');
+        if ($module_formatters) {
+          foreach ($module_formatters as $name => $formatter_info) {
+            foreach ($formatter_info['field types'] as $field_type) {
+              $info['field types'][$field_type]['formatters'][$name] = $formatter_info;
+              $info['field types'][$field_type]['formatters'][$name]['module'] = $module;
+            }
+          }
+        }
+      }
+
+      $field_result = db_query('SELECT * FROM {node_field} nf');
+      while ($field = db_fetch_array($field_result)) {
+        $global_settings = $field['global_settings'] ? unserialize($field['global_settings']) : array();
+        unset($field['global_settings']);
+        $field = array_merge($field, $global_settings);
+        $instance_info = db_fetch_array(db_query("SELECT type_name, label, widget_type, weight FROM {node_field_instance} WHERE field_name = '%s'", $field['field_name']));
+        $field['widget']['label'] = $instance_info['label'];
+        $field['type_name'] = $instance_info['type_name'];
+        $field['widget_type'] = $instance_info['widget_type'];
+        $field['#weight'] = $instance_info['weight'];
+        $field['weight'] = $instance_info['weight'];
+        $result = db_fetch_object(db_query('SELECT group_name FROM {node_group_fields} WHERE type_name = "%s" AND field_name = "%s"', 'taxonomy_fields', $field['field_name']));
+        if($result->group_name){
+          $field['group'] = $result->group_name;
+        }
+        $info['fields'][$field['field_name']] = $field;
+      }
+
+      $voc_result = db_query("SELECT SUBSTRING(v.name,16) AS vid FROM {variable} v WHERE v.name LIKE 'tax_fields_voc_%' AND v.value = 's:1:\"1\";'");
+      $terms = '(';
+      while($vocs = db_fetch_array($voc_result)){
+        $terms .= $vocs['vid'].',';
+      }
+      $terms = rtrim($terms,',').')';
+      if($terms != '()'){
+        $term_result = db_query('SELECT *,td.tid AS tid FROM {term_data} td LEFT JOIN {taxonomy_fields_ancestors} tfa ON td.tid = tfa.tid WHERE td.vid IN '.$terms.' ORDER BY td.tid ASC');
+        while ($term = db_fetch_array($term_result)) {
+          $term['fields'] = array();
+          
+          $field_result = db_query("SELECT v.value, nfi.field_name, nfi.weight, nfi.label, nfi.widget_type, nfi.widget_settings, nfi.display_settings, nfi.description 
+                                    FROM {node_field_instance} nfi 
+                                    LEFT JOIN {variable} v ON v.name = '%s'
+                                    WHERE nfi.type_name = '%s' AND v.value = '%s'  
+                                    ORDER BY nfi.weight ASC, nfi.label ASC", 'tax_fields_voc_'.$term['vid'], 'term_related_'.$term['tid'], 's:1:"1";');
+          while ($field = db_fetch_array($field_result)) {
+            // Overwrite global field information with specific information
+            $field = array_merge($info['fields'][$field['field_name']], $field);
+            $widget_settings = $field['widget_settings'] ? unserialize($field['widget_settings']) : array();
+            unset($field['widget_settings']);
+            $field['widget'] = $widget_settings;
+            $field['widget']['type'] = $field['widget_type'];
+            unset($field['widget_type']);
+            $field['widget']['weight'] = $field['weight'];
+            unset($field['weight']);
+            $field['widget']['label'] = $field['label'];
+            unset($field['label']);
+            $field['widget']['description'] = $field['description'];
+            unset($field['description']);
+            $field['type_name'] = 'term_related_'.$term['tid'];
+            $field['display_settings'] = $field['display_settings'] ? unserialize($field['display_settings']) : array();
+            $result = db_fetch_object(db_query('SELECT tf.universal FROM {taxonomy_fields} tf WHERE tf.tid = %d AND tf.field_name = "%s"', $term['tid'], $field['field_name']));
+  	        $field['universal'] = $result->universal;
+            $result = db_fetch_object(db_query('SELECT group_name FROM {node_group_fields} WHERE type_name = "%s" AND field_name = "%s"', 'taxonomy_fields', $field['field_name']));
+  	        if($result->group_name){
+  	          $field['group'] = $result->group_name;
+  	        }
+            $term['fields'][$field['field_name']] = $field;        
+          }
+  
+          $info['terms']['term_related_'.$term['tid']] = $term;
+        }
+      }     
+      cache_set('taxonomy_fields_term_info', 'cache_content', serialize($info));
+    }
+  }
+  return $info;
+}
+
+/**
+ * Clear the cache of terms; called in several places when taxonomy fields
+ * information is changed.
+ */
+function taxonomy_fields_clear_terms_cache() {
+  	module_invoke('content','clear_type_cache');
+	cache_clear_all('taxonomy_fields_term_info', 'cache_content');
+	_taxonomy_fields_term_info(TRUE);
+}
+
+/**
+ * Format field output based on display settings.
+ */
+function _taxonomy_fields_field_view(&$node, $teaser=NULL, $page=NULL, $field) {
+
+  	$field_types = _taxonomy_fields_field_types();
+  	$context = $teaser ? 'teaser' : 'full';
+  	$return = array();
+
+  	$node_field = isset($node->$field['field_name']) ? $node->$field['field_name'] : array();
+  	$formatter = isset($field['display_settings'][$context]['format']) ? $field['display_settings'][$context]['format'] : 'default';
+  	$value = '';
+
+  	if ($formatter != 'hidden') {
+  	
+  		$handle=module_invoke('content','handle','field', 'view', $field);
+	    if ($handle == CONTENT_CALLBACK_CUSTOM) {
+	      	$module = $field_types[$field['type']]['module'];
+          	$function = $module .'_field';
+          	if (function_exists($function)) {
+            	$value = $function('view', $node, $field, $node_field, $teaser, $page);
+          	}
+	    }
+	    else {
+		    foreach ($node_field as $delta => $item) {
+		        $node_field[$delta]['view'] = module_invoke('content','format',$field, $item, $formatter, $node);
+		    }
+		    $value = theme('field', $node, $field, $node_field, $teaser, $page);
+	    }
+	    
+	    if(empty($value) && $handle == CONTENT_CALLBACK_DEFAULT){
+	    	$value_old = _taxonomy_fields_field_invoke('view',$node, $field, $node_field, $teaser, $page);
+	        if(!empty($value_old) && is_array($value_old)){
+	    		foreach ($value_old as $old){
+	    			$value .= $old;
+	    		}
+	
+	    	}
+	    }
+  	}
+	$return[$field['field_name']] = array(
+	    '#weight' => $field['widget']['weight'],
+	    '#value' => $value,
+	    '#access' => $formatter != 'hidden',
+	);
+  	// test for values in $node_field in case modules added items
+  	if (isset($node->$field['field_name']) || count($node_field)) {
+    	$node->$field['field_name'] = $node_field;
+  	}
+    
+  	return $return;
+}
+
+/**
+ * Menu callback; presents a listing of fields display settings for a term.
+ *
+ * Form includes form widgets to select which fields appear for teaser, full node...
+ * and how the field labels should be rendered
+ */
+function taxonomy_fields_display_overview_form() {
+	
+  $tid = arg(3);
+  $term = taxonomy_fields_terms($tid); 
+  $field_types = _taxonomy_fields_field_types();
+ 
+  $form = array();
+  if (empty($term['fields'])) {
+    drupal_set_message(t('There are no fields configured for this term.'));
+    return '';
+  }
+
+  $form['#tree'] = TRUE;
+  foreach ($term['fields'] as $field) {
+    $form['fields'][$field['field_name']] = _content_admin_display_overview_row($field, $field_types[$field['type']]);
+  }
+
+  $form['tid'] = array('#type' => 'hidden', '#value' => $term['tid']);
+  $form['submit'] = array('#type' => 'submit', '#value' => t('Submit'));
+
+  return  $form;
+}
+
+function taxonomy_fields_display_overview_form_submit($form_id, $form_values) {
+	$tid = $form_values['tid'];
+  
+  foreach ($form_values['fields'] as $field_name => $field_values) {
+    $display_settings = array();
+    foreach ($field_values as $key => $value) {
+      $display_settings[$key] = $value;
+    }
+    db_query("UPDATE {node_field_instance} SET display_settings = '%s' WHERE type_name = '%s' AND field_name = '%s'",
+      serialize($display_settings), 'term_related_'.$tid, $field_name);
+  }
+  drupal_set_message(t('Your settings have been saved.'));
+  taxonomy_fields_clear_terms_cache();
+}
+
+/**
+ * Implementation of hook_taxonomy().
+ */
+function taxonomy_fields_taxonomy($op, $type, $array = array()) {	
+  if ($type == 'vocabulary') {
+	if($op == 'delete') {
+	  variable_del('tax_fields_voc_'.$array['vid']);
+	}
+	else {
+	  variable_set('tax_fields_voc_'.$array['vid'], $array['tax_fields']);
+	}
+  }
+  taxonomy_fields_clear_terms_cache();
+}
+
+/**
+ *  Theme the field overview table by iterating through the form and rendering form elements in table cells
+ */
+function theme_taxonomy_fields_display_overview_form($form) {
+  $header = array(t('Field'), t('Type'), t('Label'));
+  foreach (_content_admin_display_contexts() as $key => $title) {
+    $header[] = $title;
+  }
+  $rows = array();
+
+  foreach (element_children($form['fields']) as $field) {
+    $row = array();
+    foreach (element_children($form['fields'][$field]) as $key) {
+      $row[] = drupal_render($form['fields'][$field][$key]);
+    }
+    $rows[] = $row;
+  }
+
+  $output  = theme('table', $header, $rows, array('class' => 'taxonomy_fields-field-display-overview'));
+  $output .= drupal_render($form);
+  return $output;
+}
+
+/**
+ * Theme the list of terms and their fields used by taxonomy_fields
+ */
+function theme_taxonomy_fields_list_output($field_output) {
+  $output = '';
+  $header= array(t('Label'), t('Name'), t('Field type'), t('Widget type'), t('Weight'), t('Universal'), array('data' => t('Operations'), 'colspan' => 2));
+  $root_terms = array();
+  foreach ($field_output as $key => $value) {
+    if (!empty($value['parent'])) {
+      if($field_output[$key]['ancestors']){
+        $field_output[$key]['rows'] = array_merge($field_output[$key]['rows'], _taxonomy_fields_list_ancestors_rows($field_output, $key));
+      }
+      $field_output['children'][$value['parent']][] = $key;
+    }
+    else {
+      $root_terms[$value['vid']][] = $key;
+    }
+  }
+  foreach ($root_terms as $vid => $terms) {
+    $voc = taxonomy_get_vocabulary($vid);
+    $output .= '<h2 class="title">'. $voc->name ."</h2>\n";
+    $link = array(
+      array(
+        'title' => t('Edit vocabulary'),
+        'href' => 'admin/content/taxonomy/edit/vocabulary/'. $vid,
+      ),
+    );
+    $output .= theme('links', $link);
+    $output .= '<blockquote>';
+    foreach ($terms as $tid) {
+      $output .= theme('taxonomy_fields_list_term', $field_output, $tid);
+    }
+    $output .= "</blockquote>\n";
+  }
+  return $output;
+}
+
+
+/**
+ *  Returns list output for ancestor fields.
+ */
+function _taxonomy_fields_list_ancestors_rows($field_output, $tid) {
+  $rows = array();
+  $parent_tid = $field_output[$tid]['parent'];
+  if (!empty($field_output[$parent_tid]['rows'])) {
+    foreach ($field_output[$parent_tid]['rows'] as $field_name => $cols) {
+      $cols[6] = array('data' => '<em>'. t('inherited') .'</em>', 'colspan' => 2);
+      unset($cols[7]);
+      $rows[$field_name] = $cols;
+    }
+  }
+  if (!empty($field_output[$parent_tid]['parent'])) {
+    $rows = array_merge($rows, _taxonomy_fields_list_ancestors_rows($field_output, $parent_tid));
+  }
+  return $rows;
+}
+
+function theme_taxonomy_fields_list_term($field_output, $tid) {
+  $output .= '<h3>'. $field_output[$tid]['name'] . ($field_output[$tid]['ancestors'] ? ' <em>('. t('ancestors enabled') .')</em>' : '') ."</h3>\n";
+  $links = array(
+    array(
+      'title' => t('Display settings'),
+      'href' => 'admin/content/taxonomy_fields/'. $tid,
+    )
+  );
+  if($field_output[$tid]['parent']){
+    $links [] =  array(
+      'title' => t('Terms settings'),
+      'href' => 'admin/content/taxonomy_fields/'. $tid. '/edit',
+    );    
+  }
+  $output .= theme('links', $links);
+  $output .= theme('table', $header, $field_output[$tid]['rows']);
+  if (isset($field_output['children']) && isset($field_output['children'][$tid])) {
+    $output .= "<blockquote>\n";
+    foreach ($field_output['children'][$tid] as $child_id) {
+      $output .= theme('taxonomy_fields_list_term', $field_output, $child_id);
+    }
+    $output .= "</blockquote>\n";
+  }
+  return $output;
+}
+
+
+function theme_taxonomy_fields_field_add_new_field_widget_type($form) {
+  $field_types = _taxonomy_fields_field_types();
+  $widget_types = taxonomy_fields_widget_types();
+  $output = '';
+
+  $output .= '<dl>';
+  foreach ($field_types as $field_name => $field_type) {
+    $output .= '<dt>'. $field_type['label'] .'</dt>';
+    foreach ($widget_types as $widget_name => $widget_type) {
+      if (in_array($field_name, $widget_type['field types'])) {
+        $output .= '<dd>'. drupal_render($form[$field_name .'-'. $widget_name]) .'</dd>';
+      }
+    }
+  }
+  $output .= '</dl>';
+
+  return $output;
+}
+?>

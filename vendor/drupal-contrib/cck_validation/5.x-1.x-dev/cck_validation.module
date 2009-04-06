@@ -1,0 +1,119 @@
+<?php
+// $Id: cck_validation.module,v 1.2 2008/01/30 01:44:53 derhasi Exp $
+
+/**
+ * Implementation of cck hook_field_info
+ */
+function cck_validation_field_info() {
+  return array('cck_validation' => array('label' => 'Validation'));
+}
+
+/**
+ * Implementation of cck hook_field_settings
+ */
+function cck_validation_field_settings($op, $field) {
+  switch ($op) {
+    case 'form':
+      $form = array();
+      return $form;
+    case 'validate':
+      break;
+    case 'save':
+      return array();
+    case 'database columns':
+    	break;
+    case 'filters':
+      return array(
+        'default' => array(
+          'name' => t('Default'),
+          'operator' => 'views_handler_operator_gtlt',
+        ),
+      );
+    case 'callbacks':
+      return array(
+        'view' => CONTENT_CALLBACK_NONE,
+      );
+  }
+}
+
+function _cck_validation_run_code($node, $field, $node_field) {
+ if (isset($field['widget']['code'])) {
+    eval($field['widget']['code']);
+  }
+}
+
+/**
+ * Implementation of cck hook_field
+ */
+function cck_validation_field($op, &$node, $field, &$node_field, $teaser, $page) {
+  switch ($op) {
+    case 'load':
+      break;
+    case 'view':
+      break;
+    case 'validate':
+      if ($field['widget']['validation_process']=='field' && $field['widget']['validation_function']) { $field['widget']['validation_function']($node, $field, $node_field);}
+      break;
+    case 'insert':
+    case 'update':
+      break;
+  }
+}
+
+/**
+ * Implementation of cck hook_widget_info
+ */
+function cck_validation_widget_info() {
+  return array(
+    'validate_text_php' => array(
+      'label' => t('Textarea PHP Code'),
+      'field types' => array('cck_validation'),
+    ),
+  );
+}
+
+function cck_validation_widget_settings($op, $widget){
+	switch ($op) {
+		case 'form':
+		  $form['validation_process'] = array(
+		  	'#type' => 'radios',
+		  	'#title' => t('Process validation'),
+		  	'#required,' => TRUE,
+		  	'#options' => array('field'=>'field',0=>'widget'),
+		  	'#default_value' => $widget['validation_process'],
+		  );
+		  $form['validation_function'] = array(
+		  	'#type' => 'value',
+		  	'#value' => '_cck_validation_run_code',
+		  );
+		  $form['code'] = array(
+        '#type' => 'textarea',
+        '#rows' => 15,
+        '#title' => t('Validation Code'),
+        '#description' => t('The variables available to your code are: !variables. They are read-only. To process validation use PHP-Code, then call !link. Do not use <?php ?> brackets.',
+        										array('!variables'=>'<code>$node, $field, and $node_field</code>',
+        												'!link'=>l('form_set_error()','http://api.drupal.org/api/function/form_set_error/5',array(),NULL,NULL,TRUE),
+        										)),      										
+        '#default_value' => $widget['code'],
+      );
+      return $form;
+		case 'callbacks':
+      return array(
+        'default value' => CONTENT_CALLBACK_NONE,//no proof of default value
+      );
+    case 'save':
+     return array('code','validation_process','validation_function');
+  }
+}
+
+/**
+ * Implementation of cck hook_widget
+ */
+function cck_validation_widget($op, &$node, $field, &$node_field) {
+  switch ($op) {
+    case 'form':
+      return array();// Is needed to be shown in content-type-fields-list
+    case 'validate':
+    	if ($field['widget']['validation_process']!=='field' && $field['widget']['validation_function']) {$field['widget']['validation_function']($node, $field, $node_field);}
+  }
+}

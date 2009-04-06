@@ -1,0 +1,10 @@
+name = Liquid Layout
+description = Provides an easy way to layout a view without the need for rewriting a new module for the layout each time
+package = Views
+dependencies = views
+version = "5.x-1.0"
+; Information added by drupal.org packaging script on 2007-11-28
+version = "5.x-1.x-dev"
+project = "oaliquid"
+datestamp = "1196251637"
+

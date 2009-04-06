@@ -1,0 +1,68 @@
+<?php
+//$Id: cck_blocks.module,v 1.2.4.1 2008/03/13 16:33:53 fokke Exp $
+
+function cck_blocks_block($op = 'list', $delta = 0, $edit = array()) {
+	$fields = module_invoke('content', 'fields');
+
+	switch ($op) {
+	
+		case 'list':
+			$blocks = array();
+			
+			if (count($fields)) {
+				
+				foreach($fields as $field_name => $field_info) {
+					$blocks[$field_name] = array('info' => 'CCK: '.($field_info['widget']['label'] ? $field_info['widget']['label'] : $field_name));
+				}
+			}
+			
+			return $blocks;
+
+		case 'configure':
+			$form = array();
+			$options = array();
+			$info = content_fields($delta);
+			$type_info = _content_type_info();
+			foreach ($type_info['field types'][$info['type']]['formatters'] as $name => $formatter) {
+				$options[$name] = $formatter['label'];
+			}
+			$options['hidden'] = t('<Hidden>');
+			$settings = variable_get('cck_blocks_' . $delta, array('formatter' => 'default'));
+			$form['formatter'] = array(
+				'#title' => t('Display'),
+				'#type' => 'select',
+				'#description' => t('Configure how this field should be displayed when it is viewed in a block.'), 
+				'#options' => $options,
+				'#default_value' => $settings['formatter'],
+			);
+			return $form;
+			
+    case 'save':
+      $settings = variable_get('cck_blocks_' . $delta, array('formatter' => 'default'));
+      $settings['formatter'] = $edit['formatter'];
+      variable_set('cck_blocks_' . $delta, $settings);
+      return;
+	  
+    case 'view':
+	default:
+		$block = array();
+	
+		if (arg(0) == 'node' && is_numeric(arg(1)) && !arg(2) && $fields[$delta]) {
+			$node = node_load(arg(1));
+
+			if ($items = $node->$delta) {
+				$block['subject'] = $fields[$delta]['widget']['label'] ? $fields[$delta]['widget']['label'] : $delta;
+				$block['content'] = '';
+				
+				$settings = variable_get('cck_blocks_' . $delta, array('formatter' => 'default'));				
+				foreach ($items as $item) {
+					$block['content'] .= module_invoke('content', 'format', $fields[$delta], $item, $settings['formatter'], $node);
+				}
+			}
+		}
+
+		return $block;
+	}
+}
+
+?>

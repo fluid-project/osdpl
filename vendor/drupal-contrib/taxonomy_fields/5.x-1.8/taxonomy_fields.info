@@ -1,0 +1,21 @@
+; $Id: taxonomy_fields.info,v 1.1.2.12 2007/10/21 06:53:06 boneless Exp $
+name = Taxonomy Fields
+description = Allows administrators to assign CCK fields to categories.
+version = "5.x-1.2"
+package = CCK
+dependencies = content taxonomy
+
+
+
+
+; Information added by drupal.org packaging script on 2008-03-16
+version = "5.x-1.7-dev"
+project = "taxonomy_fields"
+datestamp = "1205707812"
+
+
+; Information added by drupal.org packaging script on 2008-08-23
+version = "5.x-1.8"
+project = "taxonomy_fields"
+datestamp = "1219481724"
+
